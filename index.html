@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tree Collection</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{display:flex;flex-direction:column;font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1b1b1b;background:#fff}
+  button,input{font:inherit}
+
+  header{background:#0b5d3b;color:#fff;padding:8px 12px;z-index:1100}
+  .top{display:flex;align-items:center;gap:10px}
+  h1{font-size:17px;margin:0;flex:1}
+  #status{font-size:12px;white-space:nowrap}
+  .filters{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin-top:5px;font-size:13px}
+  .filters label{display:flex;align-items:center;gap:5px;white-space:nowrap}
+  .filters input{width:17px;height:17px;margin:0;accent-color:#e8590c}
+
+  /* Muted, greyscale basemap so the coloured pins stand out (tweak or remove this line to taste) */
+  .leaflet-tile-pane{filter:grayscale(1) contrast(.9) brightness(1.08)}
+  .stats{display:flex;flex-wrap:wrap;gap:2px 16px;margin-top:5px;font-size:13px}
+  .chip{display:flex;align-items:center;gap:6px}
+  .sw{width:14px;height:14px;border:2px solid #fff;display:inline-block;flex:none}
+  .sw.req{border-radius:50%;background:#e8590c}
+  .sw.pile{border-radius:4px;background:#1c7ed6}
+
+  #banner{padding:6px 12px;font-size:13px;background:#fff3bf;color:#5c4400}
+  #banner.err{background:#ffe3e3;color:#7d1a1a}
+
+  #mapwrap{position:relative;flex:1;min-height:0}
+  #map{position:absolute;inset:0}
+  #locate{position:absolute;top:84px;right:10px;z-index:900;width:34px;height:34px;border:2px solid rgba(0,0,0,.25);border-radius:4px;background:#fff;font-size:18px;line-height:1;padding:0}
+
+  #bar{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#f4f4f4;border-top:1px solid #ddd}
+  #bar button{flex:1;padding:14px 8px;font-size:16px;font-weight:600;border:0;border-radius:10px;color:#fff}
+  #btn-address{background:#e8590c}
+  #btn-pile{background:#1c7ed6}
+
+  /* Map pins */
+  .pin{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
+  .pin.request{border-radius:50%;background:#e8590c}
+  .pin.pile{border-radius:7px;background:#1c7ed6}
+  .pin.done{opacity:.5}
+  .pin.request.done{background:#2f9e44}
+  .pin.pile.done{background:#868e96}
+  .temp-pin{font-size:34px;line-height:34px;text-align:center;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
+
+  /* Popups */
+  .pop{min-width:200px}
+  .pop-kind{font-size:12px;color:#666}
+  .pop-text{font-weight:600;font-size:16px;margin:2px 0}
+  .pop-meta{color:#444;margin-bottom:8px}
+  .pop button.pri{width:100%}
+  .pop .links{display:flex;gap:14px;margin-top:8px;font-size:13px}
+  .pop .links a,.pop .links button{background:none;border:0;padding:4px 0;color:#1864ab;text-decoration:underline;cursor:pointer}
+  .pop .links .del{color:#c92a2a;margin-left:auto}
+
+  /* Bottom sheet */
+  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:#fff;padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.3);border-radius:14px 14px 0 0}
+  #sheet h2{margin:0 0 8px;font-size:17px}
+  #sheet label{display:block;font-size:13px;color:#555;margin-bottom:3px}
+  .row{display:flex;gap:8px;align-items:center;margin-top:8px}
+  .row.between{justify-content:space-between}
+  input[type=text]{flex:1;min-width:0;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:8px}
+  .stepper{display:flex;align-items:center;gap:6px}
+  .stepper button{width:42px;height:42px;font-size:22px;border:1px solid #bbb;background:#fff;border-radius:8px;padding:0}
+  .stepper input{width:56px;height:42px;text-align:center;font-size:18px;border:1px solid #bbb;border-radius:8px}
+  #hint{margin:8px 0 0;font-size:13px;color:#555;min-height:1.3em}
+  #results{list-style:none;margin:6px 0 0;padding:0;max-height:120px;overflow:auto;border-radius:8px}
+  #results button{width:100%;text-align:left;padding:9px 10px;border:0;border-bottom:1px solid #eee;background:#f6f6f6;font-size:14px}
+  button.pri,button.sec{padding:11px 14px;font-size:16px;font-weight:600;border-radius:9px;border:0}
+  button.pri{background:#0b5d3b;color:#fff}
+  button.sec{background:#e9ecef;color:#222}
+  #sheet .actions button{flex:1}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <h1>🎄 Tree collection</h1>
+    <span id="status"></span>
+  </div>
+  <div class="stats">
+    <span class="chip"><i class="sw req"></i><span id="stat-req">…</span></span>
+    <span class="chip"><i class="sw pile"></i><span id="stat-pile">…</span></span>
+  </div>
+  <div class="filters">
+    <span>Show:</span>
+    <label><input type="checkbox" id="show-requests" checked> Addresses</label>
+    <label><input type="checkbox" id="show-piles" checked> Piles</label>
+    <label><input type="checkbox" id="show-collected" checked> Collected</label>
+  </div>
+</header>
+
+<div id="banner" hidden></div>
+
+<div id="mapwrap">
+  <div id="map"></div>
+  <button id="locate" title="Where am I?" aria-label="Where am I?">◎</button>
+</div>
+
+<div id="bar">
+  <button id="btn-address">+ Address</button>
+  <button id="btn-pile">+ Pile</button>
+</div>
+
+<div id="sheet" hidden>
+  <h2 id="sheet-title"></h2>
+  <label id="lbl-text" for="f-text"></label>
+  <div class="row" style="margin-top:0">
+    <input id="f-text" type="text" autocomplete="off" enterkeyhint="search">
+    <button id="btn-search" class="sec">Search</button>
+  </div>
+  <ul id="results"></ul>
+  <div class="row between">
+    <span>Number of trees</span>
+    <div class="stepper">
+      <button id="t-minus" aria-label="Fewer">−</button>
+      <input id="f-trees" type="number" inputmode="numeric" min="1" max="99" value="1">
+      <button id="t-plus" aria-label="More">+</button>
+    </div>
+  </div>
+  <p id="hint"></p>
+  <div class="row actions">
+    <button id="btn-cancel" class="sec">Cancel</button>
+    <button id="btn-save" class="pri">Save</button>
+  </div>
+</div>
+
+<script type="module">
+/* ---------------- load Leaflet (with fallback CDNs) ---------------- */
+const LEAFLET_SOURCES = [
+  { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' },
+  { js: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js', css: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css' },
+  { js: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js', css: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css' }
+];
+const loadTag = (tag, attrs) => new Promise((ok, fail) => {
+  const e = document.createElement(tag);
+  Object.assign(e, attrs);
+  e.onload = ok; e.onerror = () => { e.remove(); fail(new Error('failed ' + (attrs.src || attrs.href))); };
+  document.head.append(e);
+});
+for (const s of LEAFLET_SOURCES) {
+  if (window.L) break;
+  try {
+    await loadTag('script', { src: s.js });
+    await loadTag('link', { rel: 'stylesheet', href: s.css }).catch(() => {});
+  } catch (e) { console.warn(e.message); }
+}
+if (!window.L) {
+  document.body.innerHTML = '<p style="padding:24px;font:16px system-ui">Could not load the map library (Leaflet). ' +
+    'Check your internet connection, and that this page is opened in a normal browser tab (some previewers block external scripts), then reload.</p>';
+  throw new Error('Leaflet failed to load');
+}
+const L = window.L;
+
+/* ============================================================
+   CONFIG – paste your Firebase web-app config below.
+   (Firebase console → Project settings → Your apps → Web app)
+   Leave the placeholders as they are to run in local demo mode.
+   ============================================================ */
+const CONFIG = {
+  firebase: {
+    apiKey: "PASTE_API_KEY",
+    authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
+    projectId: "PASTE_PROJECT_ID",
+    storageBucket: "PASTE_PROJECT_ID.appspot.com",
+    messagingSenderId: "PASTE",
+    appId: "PASTE_APP_ID"
+  },
+  // Only needed if you open this file straight from your computer (OpenStreetMap blocks tiles then).
+  // Free key, no account: https://www.carto.com/basemaps/apikey/  (leave "" once the page is hosted online)
+  cartoKey: "",
+  startCenter: [53.6528, -6.6814],  // where the map opens – change to your area
+  startZoom: 14,
+  countryCodes: "ie",               // limit address search to this country ("" = worldwide)
+  collection: "items"
+};
+
+/* ---------------- helpers ---------------- */
+const $ = id => document.getElementById(id);
+const el = (tag, props = {}, ...kids) => { const e = document.createElement(tag); Object.assign(e, props); kids.forEach(k => e.append(k)); return e; };
+const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const clampTrees = v => Math.min(99, Math.max(1, parseInt(v, 10) || 1));
+const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' }) : '';
+
+const items = new Map();    // id -> data
+const markers = new Map();  // id -> Leaflet marker
+let store = null, demoMode = false, pending = false, fitted = false, comp = null, me = null;
+
+/* ---------------- map ---------------- */
+const map = L.map('map', { zoomControl: false }).setView(CONFIG.startCenter, CONFIG.startZoom);
+L.control.zoom({ position: 'topright' }).addTo(map);
+// Map tiles. With a CARTO key (needed when opening this file straight from disk) use CARTO's basemap.
+// Otherwise use OpenStreetMap's own tiles, which work fine once the page is hosted on a website.
+const needsKey = location.protocol === 'file:' && !CONFIG.cartoKey;
+if (CONFIG.cartoKey) {
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=' + encodeURIComponent(CONFIG.cartoKey), {
+    subdomains: 'abcd',
+    maxZoom: 20,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  }).addTo(map);
+} else {
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(map);
+}
+
+function iconFor(d) {
+  return L.divIcon({
+    className: '',
+    html: `<div class="pin ${d.type === 'pile' ? 'pile' : 'request'}${d.done ? ' done' : ''}">${Number(d.trees) || 1}</div>`,
+    iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -17]
+  });
+}
+
+const view = { request: true, pile: true, collected: true };  // which markers are shown
+
+function setVisible(m, d) {
+  const vis = (d.type === 'pile' ? view.pile : view.request) && (view.collected || !d.done);
+  if (vis && !map.hasLayer(m)) m.addTo(map);
+  if (!vis && map.hasLayer(m)) m.remove();
+}
+
+function applyChanges(changes) {
+  for (const c of changes) {
+    if (c.type === 'removed') {
+      items.delete(c.id);
+      const m = markers.get(c.id);
+      if (m) { m.remove(); markers.delete(c.id); }
+      continue;
+    }
+    const d = c.data;
+    items.set(c.id, d);
+    let m = markers.get(c.id);
+    if (!m) {
+      m = L.marker([d.lat, d.lng], { icon: iconFor(d) });
+      const id = c.id;
+      m.bindPopup(() => popupFor(id));
+      markers.set(id, m);
+    } else {
+      m.setLatLng([d.lat, d.lng]);
+      m.setIcon(iconFor(d));
+      if (m.isPopupOpen()) m.getPopup().setContent(popupFor(c.id));
+    }
+    m.setZIndexOffset(d.done ? -1000 : 0);
+    setVisible(m, d);
+  }
+}
+
+function updateStats() {
+  let rT = 0, rN = 0, pT = 0, pN = 0;
+  for (const d of items.values()) {
+    if (d.done) continue;
+    if (d.type === 'pile') { pT += d.trees; pN++; } else { rT += d.trees; rN++; }
+  }
+  $('stat-req').textContent = `To collect: ${pl(rT, 'tree', 'trees')} (${pl(rN, 'address', 'addresses')})`;
+  $('stat-pile').textContent = `Awaiting van: ${pl(pT, 'tree', 'trees')} (${pl(pN, 'pile', 'piles')})`;
+}
+
+/* ---------------- marker popup ---------------- */
+function popupFor(id) {
+  const d = items.get(id);
+  if (!d) return '';
+  const isReq = d.type !== 'pile';
+  const box = el('div', { className: 'pop' });
+  box.append(
+    el('div', { className: 'pop-kind', textContent: isReq ? '🏠 Collection request' : '📦 Pile' }),
+    el('div', { className: 'pop-text', textContent: d.text || (isReq ? '(no address)' : '(no note)') }),
+    el('div', {
+      className: 'pop-meta',
+      textContent: pl(d.trees, 'tree', 'trees') + ' · ' +
+        (d.done ? `${isReq ? 'collected' : 'picked up'} ${fmtTime(d.doneAt)}`.trim()
+                : (isReq ? 'waiting for collection' : 'waiting for van'))
+    })
+  );
+  box.append(el('button', {
+    className: 'pri',
+    textContent: d.done ? (isReq ? '↩ Undo collected' : '↩ Undo picked up')
+                        : (isReq ? '✔ Mark collected' : '🚚 Mark picked up'),
+    onclick: () => {
+      const cur = items.get(id); if (!cur || !store) return;
+      store.update(id, { done: !cur.done, doneAt: cur.done ? null : Date.now() });
+      map.closePopup();
+    }
+  }));
+  box.append(el('div', { className: 'links' },
+    el('button', { textContent: 'Edit trees', onclick: () => {
+      const cur = items.get(id); if (!cur) return;
+      const v = prompt('How many trees?', cur.trees);
+      if (v !== null) store.update(id, { trees: clampTrees(v) });
+    }}),
+    el('a', { textContent: 'Directions', target: '_blank', rel: 'noopener',
+      href: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}` }),
+    el('button', { className: 'del', textContent: 'Delete', onclick: () => {
+      if (confirm('Delete this entry completely?')) { store.remove(id); map.closePopup(); }
+    }})
+  ));
+  return box;
+}
+
+/* ---------------- add address / pile (bottom sheet) ---------------- */
+function setHint(t) { $('hint').textContent = t; }
+
+// Y position (px, from the top of the map) of the middle of the part of the map not covered by the sheet
+function visibleCentreY() {
+  const mapTop = $('map').getBoundingClientRect().top;
+  const sheetTop = $('sheet').hidden ? Infinity : $('sheet').getBoundingClientRect().top;
+  const size = map.getSize();
+  const visibleH = Math.min(size.y, sheetTop - mapTop);
+  return visibleH / 2;
+}
+function focusOn(ll, zoom) {
+  map.setView(ll, zoom, { animate: false });
+  map.panBy([0, map.getSize().y / 2 - visibleCentreY()], { animate: false });
+}
+
+function closeComposer() {
+  if (comp) comp.marker.remove();
+  comp = null;
+  $('sheet').hidden = true;
+}
+
+function openComposer(mode) {
+  if (!store) return;
+  closeComposer();
+  map.closePopup();
+  const isReq = mode === 'request';
+  $('sheet-title').textContent = isReq ? '🏠 Add an address for collection' : '📦 Add a pile';
+  $('lbl-text').textContent = isReq ? 'Address' : 'Note (optional), e.g. "outside no. 12"';
+  $('f-text').value = '';
+  $('f-trees').value = 1;
+  $('btn-search').hidden = !isReq;
+  $('results').replaceChildren();
+  setHint(isReq ? 'Type the address and tap Search, then drag the pin onto the exact house if needed.'
+                : 'Getting your location…');
+  $('sheet').hidden = false;
+
+  const size = map.getSize();
+  const marker = L.marker(map.containerPointToLatLng([size.x / 2, visibleCentreY()]), {
+    draggable: true, zIndexOffset: 5000,
+    icon: L.divIcon({ className: '', html: '<div class="temp-pin">📍</div>', iconSize: [34, 34], iconAnchor: [17, 34] })
+  }).addTo(map);
+  comp = { mode, marker };
+
+  if (!isReq) {
+    if (!navigator.geolocation) { setHint('No GPS available. Drag the pin to where the pile is.'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      if (!comp || comp.marker !== marker) return;
+      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      marker.setLatLng(ll); focusOn(ll, 18);
+      setHint('Pin placed at your location. Drag it if it looks off.');
+    }, () => {
+      if (comp && comp.marker === marker) setHint("Couldn't get GPS. Drag the pin to where the pile is.");
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  } else {
+    $('f-text').focus();
+  }
+}
+
+// Address lookup: Nominatim first; if it refuses (e.g. page opened from a local file), fall back to Photon.
+async function geocode(q, params) {
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?' + params);
+    if (!r.ok) throw new Error('nominatim ' + r.status);
+    return (await r.json()).map(x => ({ label: x.display_name, lat: parseFloat(x.lat), lon: parseFloat(x.lon) }));
+  } catch (e) {
+    console.warn('Nominatim failed, trying Photon:', e);
+    const c = map.getCenter();
+    const p = new URLSearchParams({ q, limit: '5', lat: c.lat, lon: c.lng });
+    const r = await fetch('https://photon.komoot.io/api/?' + p);
+    if (!r.ok) throw new Error('photon ' + r.status);
+    const j = await r.json();
+    return j.features.map(f => {
+      const pr = f.properties || {};
+      const street = [pr.housenumber, pr.street].filter(Boolean).join(' ');
+      const label = [pr.name && pr.name !== street ? pr.name : '', street,
+        pr.city || pr.town || pr.village || pr.county, pr.postcode, pr.country].filter(Boolean).join(', ');
+      return { label: label || q, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+    });
+  }
+}
+
+async function doSearch() {
+  if (!comp) return;
+  const q = $('f-text').value.trim();
+  if (!q) return;
+  const b = map.getBounds();
+  const params = new URLSearchParams({ format: 'jsonv2', limit: '5', q });
+  if (CONFIG.countryCodes) params.set('countrycodes', CONFIG.countryCodes);
+  params.set('viewbox', [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(','));
+  const list = $('results');
+  list.replaceChildren();
+  setHint('Searching…');
+  try {
+    const data = await geocode(q, params);
+    if (!data.length) { setHint('No match. Try adding the town or Eircode, or just drag the pin.'); return; }
+    setHint('Tap the right result, then drag the pin to fine-tune.');
+    for (const res of data) {
+      const li = el('li');
+      li.append(el('button', { textContent: res.label, onclick: () => {
+        if (!comp) return;
+        const ll = L.latLng(res.lat, res.lon);
+        comp.marker.setLatLng(ll); focusOn(ll, 18);
+        list.replaceChildren();
+        setHint('Pin placed. Drag it onto the exact house if needed.');
+      }}));
+      list.append(li);
+    }
+  } catch (e) {
+    setHint("Search failed (no signal?). You can still drag the pin to the house and save.");
+  }
+}
+
+$('btn-address').onclick = () => openComposer('request');
+$('btn-pile').onclick = () => openComposer('pile');
+$('btn-cancel').onclick = closeComposer;
+$('btn-search').onclick = doSearch;
+$('f-text').addEventListener('keydown', e => { if (e.key === 'Enter' && comp && comp.mode === 'request') { e.preventDefault(); doSearch(); } });
+$('t-minus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) - 1); };
+$('t-plus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) + 1); };
+$('btn-save').onclick = () => {
+  if (!comp || !store) return;
+  const text = $('f-text').value.trim();
+  if (comp.mode === 'request' && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
+  const ll = comp.marker.getLatLng();
+  const box = $(comp.mode === 'pile' ? 'show-piles' : 'show-requests');  // make sure the new pin is visible
+  if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
+  store.add({ type: comp.mode, text, trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng, done: false, doneAt: null });
+  closeComposer();
+};
+
+/* ---------------- misc UI ---------------- */
+for (const [key, boxId] of [['request', 'show-requests'], ['pile', 'show-piles'], ['collected', 'show-collected']]) {
+  $(boxId).onchange = e => {
+    view[key] = e.target.checked;
+    for (const [id, m] of markers) setVisible(m, items.get(id));
+  };
+}
+
+$('locate').onclick = () => {
+  if (!navigator.geolocation) return alert('Location is not available on this device.');
+  navigator.geolocation.getCurrentPosition(p => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    if (!me) me = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#1971c2', fillOpacity: 1, interactive: false }).addTo(map);
+    else me.setLatLng(ll);
+    map.setView(ll, Math.max(map.getZoom(), 17));
+  }, () => alert('Could not get your location. Check that location access is allowed for this site.'),
+  { enableHighAccuracy: true, timeout: 10000 });
+};
+
+function showBanner(text, isErr, append) {
+  const b = $('banner');
+  b.textContent = (append && !b.hidden ? b.textContent + ' ' : '') + text;
+  if (isErr) b.className = 'err'; else if (!append) b.className = '';
+  b.hidden = false;
+}
+
+function setStatus() {
+  const s = $('status');
+  if (demoMode) { s.textContent = '● Demo'; return; }
+  if (!navigator.onLine) s.textContent = '● Offline – will sync';
+  else if (pending) s.textContent = '● Syncing…';
+  else s.textContent = '● Live';
+}
+window.addEventListener('online', setStatus);
+window.addEventListener('offline', setStatus);
+
+/* ---------------- storage: local demo ---------------- */
+function createLocalStore() {
+  const KEY = 'tree-collection-demo';
+  let data = {}, cb = () => {};
+  try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
+  return {
+    subscribe(f) { cb = f; f(Object.entries(data).map(([id, d]) => ({ type: 'added', id, data: d }))); },
+    add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); },
+    update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
+    remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); }
+  };
+}
+
+/* ---------------- storage: Firebase Firestore ---------------- */
+async function createFirebaseStore() {
+  const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+  const [{ initializeApp }, fs] = await Promise.all([
+    import(base + 'firebase-app.js'),
+    import(base + 'firebase-firestore.js')
+  ]);
+  const app = initializeApp(CONFIG.firebase);
+  let db;
+  try {
+    // keeps working (and queues changes) when signal drops
+    db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+  } catch (e) { db = fs.getFirestore(app); }
+  const col = fs.collection(db, CONFIG.collection);
+  const onErr = e => { console.error(e); showBanner("Couldn't save: " + (e.code || e.message), true); };
+  return {
+    subscribe(cb) {
+      fs.onSnapshot(col, { includeMetadataChanges: true }, snap => {
+        pending = snap.metadata.hasPendingWrites; setStatus();
+        cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data() })));
+      }, e => { console.error(e); showBanner("Can't read the database: " + (e.code || e.message), true); });
+    },
+    add(d) { fs.addDoc(col, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); },
+    update(id, p) { fs.updateDoc(fs.doc(db, CONFIG.collection, id), p).catch(onErr); },
+    remove(id) { fs.deleteDoc(fs.doc(db, CONFIG.collection, id)).catch(onErr); }
+  };
+}
+
+/* ---------------- start ---------------- */
+const isSet = v => v && !String(v).startsWith('PASTE');
+(async () => {
+  if (isSet(CONFIG.firebase.apiKey) && isSet(CONFIG.firebase.projectId)) {
+    try { store = await createFirebaseStore(); }
+    catch (e) { console.error(e); showBanner("Couldn't load Firebase (no signal?). Reload the page to retry.", true); return; }
+  } else {
+    demoMode = true;
+    store = createLocalStore();
+    showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+  }
+  setStatus();
+  if (needsKey) showBanner('Map tiles are blocked when opening this file directly: paste a free CARTO key into CONFIG.cartoKey (or host the page online).', true, true);
+  store.subscribe(changes => {
+    applyChanges(changes);
+    updateStats();
+    if (!fitted && items.size && !comp) {
+      fitted = true;
+      const pts = [...items.values()].map(d => [d.lat, d.lng]);
+      map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+    }
+  });
+  updateStats();
+})();
+</script>
+</body>
+</html>
