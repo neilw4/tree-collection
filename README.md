@@ -2,12 +2,12 @@
 
 One-page web app: add addresses for tree collection, mark them collected, drop piles, mark piles picked up. Everything shows live on a shared map.
 
-- **Orange circles** = addresses waiting for collection (green + faded when collected)
-- **Blue squares** = piles waiting for the van (grey + faded when picked up)
-- Number on each pin = number of trees
-- Tap a pin to mark done, undo, edit tree count, get directions, or delete
+- **Green tree** = a house with a tree to collect; **stack of trees** = a pile waiting for the van. Both turn grey once collected or picked up.
+- The number on each icon is the number of trees (orange badge for houses, blue for piles)
+- Tap an icon to mark it collected/picked up (and undo), **Edit** it (address, note, tree count, move the pin), get directions, or delete it
+- Houses and piles can both carry a note, e.g. "tree is at the side gate" or "outside no. 12"
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
-- The base map is deliberately greyscale so the coloured pins stand out (one CSS line in `index.html` if you'd like colour back)
+- The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
 ## Try it first (no setup)
 
@@ -50,6 +50,15 @@ Open the link on two phones, add an address on one, and watch it appear on the o
 ## Afterwards (please do this: it's people's home addresses)
 - Firebase console → Firestore → delete the `items` collection (or delete the whole project under Project settings).
 - Delete the Netlify site / Hosting site.
+
+## Optional: better address search with Google
+The default address search (OpenStreetMap-based) often finds only the street for Irish addresses and can't search Eircodes. If you add a Google key, the page uses Google's geocoder first and falls back to the free search if Google fails.
+
+1. In the Google Cloud console, create a project, attach a billing account, and enable **Maps JavaScript API** and **Geocoding API**. (Geocoding currently has a monthly free allowance; check Google's pricing page, and set a budget alert or quota cap.)
+2. Create an API key. Restrict it to **Websites (HTTP referrers)** with your site's address, e.g. `https://neilw4.github.io/*`, and under API restrictions allow only those two APIs.
+3. Paste the key into `googleKey` in the config block of `index.html`.
+
+Notes: a page opened from a local file sends no referrer, so a referrer-restricted key only works on the hosted page. Check Google's terms before relying on this, as they limit using Google geocoding results on non-Google maps.
 
 ## Notes
 - The Firebase API key in the page is meant to be public. What protects the data is the obscure URL plus the expiring rules in `firestore.rules`.

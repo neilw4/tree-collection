@@ -39,19 +39,21 @@
   #btn-address{background:#e8590c}
   #btn-pile{background:#1c7ed6}
 
-  /* Map pins */
-  .pin{width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.5)}
-  .pin.request{border-radius:50%;background:#e8590c}
-  .pin.pile{border-radius:7px;background:#1c7ed6}
-  .pin.done{opacity:.5}
-  .pin.request.done{background:#2f9e44}
-  .pin.pile.done{background:#868e96}
+  /* Map icons: a green tree per house, a stack of trees per pile; greyed out once collected */
+  .ico{position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+  .ico svg{display:block;width:100%;height:100%}
+  .ico.done{filter:grayscale(1) drop-shadow(0 1px 1px rgba(0,0,0,.3));opacity:.6}
+  .cnt{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#fff;border:2px solid #e8590c;color:#1b1b1b;font:700 12px/16px system-ui,sans-serif;text-align:center}
+  .ico.pile .cnt{border-color:#1c7ed6}
+  .hico svg{display:block;height:22px;width:22px}
+  .hico.pile svg{width:30px}
   .temp-pin{font-size:34px;line-height:34px;text-align:center;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
 
   /* Popups */
   .pop{min-width:200px}
   .pop-kind{font-size:12px;color:#666}
   .pop-text{font-weight:600;font-size:16px;margin:2px 0}
+  .pop-note{color:#555;font-size:14px;margin-bottom:2px}
   .pop-meta{color:#444;margin-bottom:8px}
   .pop button.pri{width:100%}
   .pop .links{display:flex;gap:14px;margin-top:8px;font-size:13px}
@@ -69,7 +71,7 @@
   .stepper button{width:42px;height:42px;font-size:22px;border:1px solid #bbb;background:#fff;border-radius:8px;padding:0}
   .stepper input{width:56px;height:42px;text-align:center;font-size:18px;border:1px solid #bbb;border-radius:8px}
   #hint{margin:8px 0 0;font-size:13px;color:#555;min-height:1.3em}
-  #results{list-style:none;margin:6px 0 0;padding:0;max-height:120px;overflow:auto;border-radius:8px}
+  #results{list-style:none;margin:6px 0 0;padding:0;max-height:100px;overflow:auto;border-radius:8px}
   #results button{width:100%;text-align:left;padding:9px 10px;border:0;border-bottom:1px solid #eee;background:#f6f6f6;font-size:14px}
   button.pri,button.sec{padding:11px 14px;font-size:16px;font-weight:600;border-radius:9px;border:0}
   button.pri{background:#0b5d3b;color:#fff}
@@ -85,8 +87,8 @@
     <span id="status"></span>
   </div>
   <div class="stats">
-    <span class="chip"><i class="sw req"></i><span id="stat-req">…</span></span>
-    <span class="chip"><i class="sw pile"></i><span id="stat-pile">…</span></span>
+    <span class="chip"><span class="hico req" id="ico-req"></span><span id="stat-req">…</span></span>
+    <span class="chip"><span class="hico pile" id="ico-pile"></span><span id="stat-pile">…</span></span>
   </div>
   <div class="filters">
     <span>Show:</span>
@@ -110,12 +112,16 @@
 
 <div id="sheet" hidden>
   <h2 id="sheet-title"></h2>
-  <label id="lbl-text" for="f-text"></label>
-  <div class="row" style="margin-top:0">
-    <input id="f-text" type="text" autocomplete="off" enterkeyhint="search">
-    <button id="btn-search" class="sec">Search</button>
+  <div id="addr-block">
+    <label for="f-text">Address</label>
+    <div class="row" style="margin-top:0">
+      <input id="f-text" type="text" autocomplete="off" enterkeyhint="search">
+      <button id="btn-search" class="sec">Search</button>
+    </div>
+    <ul id="results"></ul>
   </div>
-  <ul id="results"></ul>
+  <label id="lbl-note" for="f-note" style="margin-top:8px"></label>
+  <input id="f-note" type="text" autocomplete="off" style="width:100%">
   <div class="row between">
     <span>Number of trees</span>
     <div class="stepper">
@@ -175,6 +181,9 @@ const CONFIG = {
   // Only needed if you open this file straight from your computer (OpenStreetMap blocks tiles then).
   // Free key, no account: https://www.carto.com/basemaps/apikey/  (leave "" once the page is hosted online)
   cartoKey: "",
+  // Optional: Google Maps API key for better address search (needs the "Maps JavaScript API" and
+  // "Geocoding API" enabled; restrict the key to your site's address). Leave "" to use free OpenStreetMap-based search.
+  googleKey: "",
   startCenter: [53.6528, -6.6814],  // where the map opens – change to your area
   startZoom: 14,
   countryCodes: "ie",               // limit address search to this country ("" = worldwide)
@@ -211,11 +220,31 @@ if (CONFIG.cartoKey) {
   }).addTo(map);
 }
 
+// Tree drawn in a 32x33 box: three stacked tiers and a trunk, outlined in white so it pops off the grey map.
+const treeShape = fill =>
+  `<g stroke="#fff" stroke-width="1.6" stroke-linejoin="round">` +
+  `<polygon points="16,1 23,12 9,12" fill="${fill}"/>` +
+  `<polygon points="16,7 26,20 6,20" fill="${fill}"/>` +
+  `<polygon points="16,14 29,28 3,28" fill="${fill}"/>` +
+  `<rect x="13.5" y="28" width="5" height="4" fill="#6b4a2b"/></g>`;
+const TREE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 33">${treeShape('#2f9e44')}</svg>`;
+// Pile: three trees (two smaller at the back) resting on a log.
+const PILE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 38">` +
+  `<rect x="2" y="31" width="48" height="5" rx="2.5" fill="#6b4a2b" stroke="#fff" stroke-width="1.6"/>` +
+  `<g transform="translate(0 4) scale(.8)">${treeShape('#1b6e32')}</g>` +
+  `<g transform="translate(24 4) scale(.8)">${treeShape('#1b6e32')}</g>` +
+  `<g transform="translate(9.5 -1)">${treeShape('#2b8a3e')}</g></svg>`;
+$('ico-req').innerHTML = TREE_SVG;
+$('ico-pile').innerHTML = PILE_SVG;
+
 function iconFor(d) {
+  const pile = d.type === 'pile';
+  const n = Number(d.trees) || 1;
+  const w = pile ? 56 : 36, h = pile ? 41 : 37;
   return L.divIcon({
     className: '',
-    html: `<div class="pin ${d.type === 'pile' ? 'pile' : 'request'}${d.done ? ' done' : ''}">${Number(d.trees) || 1}</div>`,
-    iconSize: [34, 34], iconAnchor: [17, 17], popupAnchor: [0, -17]
+    html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}<span class="cnt">${n}</span></div>`,
+    iconSize: [w, h], iconAnchor: [w / 2, h - 3], popupAnchor: [0, -(h - 3)]
   });
 }
 
@@ -268,10 +297,12 @@ function popupFor(id) {
   const d = items.get(id);
   if (!d) return '';
   const isReq = d.type !== 'pile';
+  const note = d.note ?? (isReq ? '' : d.text) ?? '';
   const box = el('div', { className: 'pop' });
   box.append(
-    el('div', { className: 'pop-kind', textContent: isReq ? '🏠 Collection request' : '📦 Pile' }),
-    el('div', { className: 'pop-text', textContent: d.text || (isReq ? '(no address)' : '(no note)') }),
+    el('div', { className: 'pop-kind', textContent: isReq ? '🌲 Collection request' : '🌲🌲 Pile' }),
+    el('div', { className: 'pop-text', textContent: isReq ? (d.text || '(no address)') : (note || 'Pile') }),
+    isReq && note ? el('div', { className: 'pop-note', textContent: '📝 ' + note }) : '',
     el('div', {
       className: 'pop-meta',
       textContent: pl(d.trees, 'tree', 'trees') + ' · ' +
@@ -290,11 +321,7 @@ function popupFor(id) {
     }
   }));
   box.append(el('div', { className: 'links' },
-    el('button', { textContent: 'Edit trees', onclick: () => {
-      const cur = items.get(id); if (!cur) return;
-      const v = prompt('How many trees?', cur.trees);
-      if (v !== null) store.update(id, { trees: clampTrees(v) });
-    }}),
+    el('button', { textContent: 'Edit', onclick: () => openComposer(isReq ? 'request' : 'pile', id) }),
     el('a', { textContent: 'Directions', target: '_blank', rel: 'noopener',
       href: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}` }),
     el('button', { className: 'del', textContent: 'Delete', onclick: () => {
@@ -326,27 +353,35 @@ function closeComposer() {
   $('sheet').hidden = true;
 }
 
-function openComposer(mode) {
+function openComposer(mode, editId) {
   if (!store) return;
   closeComposer();
   map.closePopup();
   const isReq = mode === 'request';
-  $('sheet-title').textContent = isReq ? '🏠 Add an address for collection' : '📦 Add a pile';
-  $('lbl-text').textContent = isReq ? 'Address' : 'Note (optional), e.g. "outside no. 12"';
-  $('f-text').value = '';
-  $('f-trees').value = 1;
-  $('btn-search').hidden = !isReq;
+  const ex = editId ? items.get(editId) : null;
+  $('sheet-title').textContent = ex ? (isReq ? '✏️ Edit address' : '✏️ Edit pile')
+                                    : (isReq ? '🏠 Add an address for collection' : '📦 Add a pile');
+  $('addr-block').hidden = !isReq;
+  if (isReq && CONFIG.googleKey) loadGoogle().catch(() => {});
+  $('lbl-note').textContent = isReq ? 'Note (optional), e.g. "tree is at the side gate"' : 'Note (optional), e.g. "outside no. 12"';
+  $('f-text').value = ex && isReq ? (ex.text || '') : '';
+  $('f-note').value = ex ? (ex.note ?? (isReq ? '' : ex.text) ?? '') : '';
+  $('f-trees').value = ex ? clampTrees(ex.trees) : 1;
   $('results').replaceChildren();
-  setHint(isReq ? 'Type the address and tap Search, then drag the pin onto the exact house if needed.'
-                : 'Getting your location…');
+  setHint(ex ? 'Drag the pin if you need to move it.'
+             : isReq ? 'Type the address and tap Search, then drag the pin onto the exact house if needed.'
+                     : 'Getting your location…');
   $('sheet').hidden = false;
 
   const size = map.getSize();
-  const marker = L.marker(map.containerPointToLatLng([size.x / 2, visibleCentreY()]), {
+  const start = ex ? L.latLng(ex.lat, ex.lng) : map.containerPointToLatLng([size.x / 2, visibleCentreY()]);
+  const marker = L.marker(start, {
     draggable: true, zIndexOffset: 5000,
     icon: L.divIcon({ className: '', html: '<div class="temp-pin">📍</div>', iconSize: [34, 34], iconAnchor: [17, 34] })
   }).addTo(map);
-  comp = { mode, marker };
+  comp = { mode, marker, editId: editId || null };
+
+  if (ex) { focusOn(start, Math.max(map.getZoom(), 17)); return; }
 
   if (!isReq) {
     if (!navigator.geolocation) { setHint('No GPS available. Drag the pin to where the pile is.'); return; }
@@ -363,27 +398,86 @@ function openComposer(mode) {
   }
 }
 
-// Address lookup: Nominatim first; if it refuses (e.g. page opened from a local file), fall back to Photon.
-async function geocode(q, params) {
+// ---- Google geocoding (only used if CONFIG.googleKey is set) ----
+let googleLib = null;
+function loadGoogle() {
+  if (!CONFIG.googleKey) return null;
+  googleLib ??= new Promise((ok, fail) => {
+    window.__gmReady = ok;
+    window.gm_authFailure = () => showBanner('Google rejected the API key (check it, the enabled APIs and the site restriction). Using the free address search instead.', true);
+    const sc = document.createElement('script');
+    sc.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(CONFIG.googleKey) + '&loading=async&callback=__gmReady&v=weekly';
+    sc.onerror = () => fail(new Error('Google Maps failed to load'));
+    document.head.append(sc);
+  }).then(() => google.maps.importLibrary('geocoding')).catch(e => { googleLib = null; throw e; });
+  return googleLib;
+}
+
+async function geocodeGoogle(q) {
+  const lib = await loadGoogle();
+  const b = map.getBounds();
+  const req = { address: q, bounds: { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() } };
+  const cc = (CONFIG.countryCodes || '').split(',')[0].trim();
+  if (cc) { req.componentRestrictions = { country: cc.toUpperCase() }; req.region = cc.toLowerCase(); }
   try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + params);
-    if (!r.ok) throw new Error('nominatim ' + r.status);
-    return (await r.json()).map(x => ({ label: x.display_name, lat: parseFloat(x.lat), lon: parseFloat(x.lon) }));
+    const { results } = await new lib.Geocoder().geocode(req);
+    return results.slice(0, 5).map(r => ({
+      label: r.formatted_address,
+      lat: r.geometry.location.lat(),
+      lon: r.geometry.location.lng(),
+      approx: r.geometry.location_type === 'APPROXIMATE' || r.geometry.location_type === 'GEOMETRIC_CENTER'
+    }));
   } catch (e) {
-    console.warn('Nominatim failed, trying Photon:', e);
+    if (e && e.code === 'ZERO_RESULTS') return [];
+    throw e;
+  }
+}
+
+// Address lookup. Irish house numbers and Eircodes are often missing from OpenStreetMap data, so try the
+// full text first, then street-level (house number removed), each on Nominatim and then Photon.
+async function geocodeOnce(q, params) {
+  if (CONFIG.googleKey) {
+    try {
+      const g = await geocodeGoogle(q);
+      if (g.length) return g;
+    } catch (e) { console.warn('Google geocoding failed:', e); }
+  }
+  try {
+    const p = new URLSearchParams(params); p.set('q', q);
+    const r = await fetch('https://nominatim.openstreetmap.org/search?' + p, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.length) return d.map(x => ({ label: x.display_name, lat: parseFloat(x.lat), lon: parseFloat(x.lon) }));
+    }
+  } catch (e) { console.warn('Nominatim failed:', e); }
+  try {
     const c = map.getCenter();
     const p = new URLSearchParams({ q, limit: '5', lat: c.lat, lon: c.lng });
-    const r = await fetch('https://photon.komoot.io/api/?' + p);
-    if (!r.ok) throw new Error('photon ' + r.status);
-    const j = await r.json();
-    return j.features.map(f => {
-      const pr = f.properties || {};
-      const street = [pr.housenumber, pr.street].filter(Boolean).join(' ');
-      const label = [pr.name && pr.name !== street ? pr.name : '', street,
-        pr.city || pr.town || pr.village || pr.county, pr.postcode, pr.country].filter(Boolean).join(', ');
-      return { label: label || q, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
-    });
+    const r = await fetch('https://photon.komoot.io/api/?' + p, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const j = await r.json();
+      const out = j.features.map(f => {
+        const pr = f.properties || {};
+        const street = [pr.housenumber, pr.street].filter(Boolean).join(' ');
+        const label = [pr.name && pr.name !== street ? pr.name : '', street,
+          pr.city || pr.town || pr.village || pr.county, pr.postcode, pr.country].filter(Boolean).join(', ');
+        return { label: label || q, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
+      });
+      if (out.length) return out;
+    }
+  } catch (e) { console.warn('Photon failed:', e); }
+  return [];
+}
+
+async function geocode(q, params) {
+  let results = await geocodeOnce(q, params);
+  if (results.length) return { results, relaxed: false };
+  const stripped = q.replace(/^\s*(?:no\.?\s*)?\d+[a-z]?(?:\s*[-/]\s*\d+)?\s*,?\s*/i, '').trim();
+  if (stripped && stripped !== q) {
+    results = await geocodeOnce(stripped, params);
+    if (results.length) return { results, relaxed: true };
   }
+  return { results: [], relaxed: false };
 }
 
 async function doSearch() {
@@ -398,9 +492,11 @@ async function doSearch() {
   list.replaceChildren();
   setHint('Searching…');
   try {
-    const data = await geocode(q, params);
-    if (!data.length) { setHint('No match. Try adding the town or Eircode, or just drag the pin.'); return; }
-    setHint('Tap the right result, then drag the pin to fine-tune.');
+    const { results: data, relaxed } = await geocode(q, params);
+    if (!data.length) { setHint('No match (or no signal). Try just the street and town, or drag the pin onto the house.' + (CONFIG.googleKey ? '' : ' Eircodes are not searchable here.')); return; }
+    const rough = relaxed || data.every(r => r.approx);
+    setHint(rough ? 'Approximate match only (street level). Tap a result, then drag the pin onto the exact house.'
+                  : 'Tap the right result, then drag the pin to fine-tune.');
     for (const res of data) {
       const li = el('li');
       li.append(el('button', { textContent: res.label, onclick: () => {
@@ -426,12 +522,18 @@ $('t-minus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-tre
 $('t-plus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) + 1); };
 $('btn-save').onclick = () => {
   if (!comp || !store) return;
-  const text = $('f-text').value.trim();
-  if (comp.mode === 'request' && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
+  const isReq = comp.mode === 'request';
+  const text = isReq ? $('f-text').value.trim() : '';
+  if (isReq && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
   const ll = comp.marker.getLatLng();
-  const box = $(comp.mode === 'pile' ? 'show-piles' : 'show-requests');  // make sure the new pin is visible
-  if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
-  store.add({ type: comp.mode, text, trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng, done: false, doneAt: null });
+  const data = { text, note: $('f-note').value.trim(), trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng };
+  if (comp.editId) {
+    store.update(comp.editId, data);
+  } else {
+    const box = $(isReq ? 'show-requests' : 'show-piles');  // make sure the new icon is visible
+    if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
+    store.add({ type: comp.mode, ...data, done: false, doneAt: null });
+  }
   closeComposer();
 };
 
