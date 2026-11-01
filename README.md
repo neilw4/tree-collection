@@ -9,6 +9,11 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
+## Activity log
+- **📜 Log** (top bar) lists what happened, newest first: adds, edits, collected / picked up, undo, deletes and spreadsheet imports, with the time and the name typed in the box at the top of the panel (stored on that device only).
+- Each entry has an **Undo** button: it reverses a collected/picked-up mark or undoes an add, and a delete has **Restore** to bring the entry back. Edits are logged but can't be undone.
+- Estates with no entries are hidden from the Estates list and the estate suggestions, and are removed automatically after you next add, edit or delete something.
+
 ## Estates
 - When adding or editing a house **or a pile** you can give it an **estate** and a **pickup time**. Pick an existing estate from the list or type a new name and it is created.
 - The app suggests the estate for you: if the address you typed contains an existing estate's name, or the pin lands within about 60 m of a house in that estate, the estate field is filled in (and you can change it).

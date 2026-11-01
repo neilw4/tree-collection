@@ -88,8 +88,17 @@
   /* Upload from a spreadsheet */
   #bulk{margin-top:10px;font-size:13px;color:#555}
   #bulk button{background:none;border:0;padding:4px 0;color:#1864ab;text-decoration:underline;font-size:14px;cursor:pointer}
-  #estpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
-  #estpanel[hidden]{display:none}
+  #estpanel,#logpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
+  #estpanel[hidden],#logpanel[hidden]{display:none}
+  #logpanel{width:min(380px,calc(100% - 16px))}
+  #logpanel .eh{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-weight:600}
+  #logpanel .eh span{flex:1}
+  #logpanel input{flex:none;width:130px;padding:4px 8px;font-size:13px;border:1px solid #bbb;border-radius:8px}
+  #logpanel .lg{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #eee;font-size:13px}
+  #logpanel .lg .tm{color:#777;flex:none;width:42px}
+  #logpanel .lg .tx{flex:1}
+  #logpanel .lg.undone .tx{color:#999;text-decoration:line-through}
+  #logpanel .lg button{padding:3px 9px;font-size:12px;border:1px solid #ccc;background:#f6f6f6;border-radius:10px;flex:none}
   #estpanel .eh{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-weight:600}
   #estpanel .eh span{flex:1}
   #estpanel .eh button{padding:3px 9px;font-size:12px;border:1px solid #ccc;background:#f6f6f6;border-radius:10px}
@@ -135,6 +144,7 @@
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
     <label><input type="checkbox" id="show-estates" checked> Outlines</label>
     <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
+    <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
     <span id="status"></span>
   </div>
 </header>
@@ -145,6 +155,7 @@
   <div id="map"></div>
   <button id="locate" title="Where am I?" aria-label="Where am I?">◎</button>
   <div id="estpanel" hidden></div>
+  <div id="logpanel" hidden></div>
 </div>
 
 <div id="bar">
@@ -319,6 +330,7 @@ const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString('en-IE', { hour: '2-d
 const items = new Map();    // id -> data
 const markers = new Map();  // id -> Leaflet marker
 const estates = new Map();  // id -> {type:'estate', name, time}
+const logs = new Map();     // id -> {type:'log', ts, who, action, targetId, label, snapshot?, undone?}
 let store = null, demoMode = false, pending = false, fitted = false, comp = null, me = null;
 
 /* ---------------- map ---------------- */
@@ -432,8 +444,11 @@ function findEstateByName(name) {
   return null;
 }
 
+// An estate is "live" if it has any entries (or was only just created, before its first entry is saved).
+const isLive = (id, e) => estateMembers(id).length > 0 || Date.now() - (e.created || 0) < 120000;
+
 function refreshEstateList() {
-  const names = [...estates.values()].map(e => e.name).sort((a, b) => a.localeCompare(b));
+  const names = [...estates].filter(([id, e]) => isLive(id, e)).map(([, e]) => e.name).sort((a, b) => a.localeCompare(b));
   $('estate-list').replaceChildren(...names.map(n => el('option', { value: n })));
 }
 
@@ -530,11 +545,24 @@ function estateAt(ll, text, nameOnly) {
   return near;
 }
 
+// Remove estates that no longer have any entries. Run a moment after the user's own actions (never on load).
+let pruneTimer = 0;
+function schedulePrune() { clearTimeout(pruneTimer); pruneTimer = setTimeout(pruneEstates, 1500); }
+function pruneEstates() {
+  if (!store) return;
+  for (const [id, e] of [...estates]) {
+    if (estateMembers(id).length || Date.now() - (e.created || 0) < 120000) continue;
+    estates.delete(id); hiddenEstates.delete(id); store.remove(id);
+  }
+  refreshEstateList(); scheduleEstates();
+}
+
 /* Estates panel: switch each estate (outline + its houses and piles) on or off */
 function renderEstatePanel() {
   const p = $('estpanel');
-  const list = [...estates.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name));
-  $('btn-estates').textContent = (hiddenEstates.size ? `Estates (${hiddenEstates.size} off)` : 'Estates') + (p.hidden ? ' ▾' : ' ▴');
+  const list = [...estates.entries()].filter(([id, e]) => estateMembers(id).length > 0).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const off = list.filter(([id]) => hiddenEstates.has(id)).length;
+  $('btn-estates').textContent = (off ? `Estates (${off} off)` : 'Estates') + (p.hidden ? ' ▾' : ' ▴');
   if (p.hidden) return;
   const head = el('div', { className: 'eh' }, el('span', { textContent: 'Show estates' }),
     el('button', { textContent: 'All', onclick: () => setAllEstates(true) }),
@@ -556,12 +584,13 @@ function toggleEstate(id, on) {
 }
 function setAllEstates(on) {
   hiddenEstates.clear();
-  if (!on) for (const id of estates.keys()) hiddenEstates.add(id);
+  if (!on) for (const [id] of estates) if (estateMembers(id).length) hiddenEstates.add(id);
   for (const [mid, m] of markers) setVisible(m, items.get(mid));
   scheduleEstates();
 }
 $('btn-estates').onclick = () => {
   const p = $('estpanel');
+  if (p.hidden) closeLog();
   p.hidden = !p.hidden;
   $('btn-estates').setAttribute('aria-expanded', String(!p.hidden));
   renderEstatePanel();
@@ -606,9 +635,10 @@ $('e-delete').onclick = () => {
 };
 
 function applyChanges(changes) {
-  let estatesChanged = false;
+  let estatesChanged = false, logChanged = false;
   for (const c of changes) {
     if (c.type === 'removed') {
+      if (logs.delete(c.id)) { logChanged = true; continue; }
       if (estates.delete(c.id)) { estatesChanged = true; continue; }
       items.delete(c.id);
       const m = markers.get(c.id);
@@ -616,6 +646,7 @@ function applyChanges(changes) {
       continue;
     }
     const d = c.data;
+    if (d.type === 'log') { logs.set(c.id, d); logChanged = true; continue; }
     if (d.type === 'estate') { estates.set(c.id, d); estatesChanged = true; continue; }
     items.set(c.id, d);
     let m = markers.get(c.id);
@@ -632,8 +663,9 @@ function applyChanges(changes) {
     m.setZIndexOffset(d.done ? -1000 : 0);
     setVisible(m, d);
   }
-  if (estatesChanged) refreshEstateList();
+  refreshEstateList();
   scheduleEstates();
+  if (logChanged) renderLog();
 }
 
 function updateStats() {
@@ -674,6 +706,7 @@ function popupFor(id) {
     onclick: () => {
       const cur = items.get(id); if (!cur || !store) return;
       store.update(id, { done: !cur.done, doneAt: cur.done ? null : Date.now() });
+      logAct(cur.done ? 'undo' : 'done', id, cur);
       map.closePopup();
     }
   }));
@@ -685,7 +718,10 @@ function popupFor(id) {
       const msg = isReq
         ? "Delete this address completely?\n\nIf the tree has been collected, please cancel and tap “✔ Mark collected” instead. That keeps the record and the counts right (and you can undo it). Only delete an address that was added by mistake."
         : "Delete this pile completely?\n\nIf the pile has been picked up, please cancel and tap “🚚 Mark picked up” instead. That keeps the record and the counts right (and you can undo it). Only delete a pile that was added by mistake.";
-      if (confirm(msg)) { store.remove(id); map.closePopup(); }
+      if (confirm(msg)) {
+        const snap = { ...items.get(id) }; delete snap.createdAt;
+        store.remove(id); logAct('deleted', id, snap, snap); map.closePopup(); schedulePrune();
+      }
     }})
   ));
   return box;
@@ -946,11 +982,14 @@ $('btn-save').onclick = () => {
   data.estate = ensureEstate($('f-estate').value, $('f-time').value);
   if (comp.editId) {
     store.update(comp.editId, data);
+    logAct('edited', comp.editId, { ...items.get(comp.editId), ...data });
   } else {
     const box = $(isReq ? 'show-requests' : 'show-piles');  // make sure the new icon is visible
     if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
-    store.add({ type: comp.mode, ...data, done: false, doneAt: null });
+    const nid = store.add({ type: comp.mode, ...data, done: false, doneAt: null });
+    logAct('added', nid, { type: comp.mode, ...data });
   }
+  schedulePrune();
   if (comp.failKey) lastFailures = lastFailures.filter(f => f.key !== comp.failKey);
   closeComposer();
 };
@@ -994,6 +1033,74 @@ function setStatus() {
 window.addEventListener('online', setStatus);
 window.addEventListener('offline', setStatus);
 
+/* ---------------- activity log ---------------- */
+// Entries are documents in the same collection ({type:'log'}), so everyone sees the same history.
+const NAME_KEY = 'tree-collection-name';
+const getName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } };
+const labelOf = d => d.type === 'pile' ? (d.note || 'Pile') : (d.text || 'address');
+
+function logAct(action, targetId, d, snapshot) {
+  if (!store) return;
+  const entry = { type: 'log', ts: Date.now(), who: getName(), action, targetId: targetId || '', kind: d.type === 'pile' ? 'pile' : 'request', label: labelOf(d) };
+  if (snapshot) entry.snapshot = snapshot;
+  store.add(entry);
+}
+
+function logText(l) {
+  const pile = l.kind === 'pile', what = `${pile ? 'pile' : 'address'} “${l.label}”`;
+  switch (l.action) {
+    case 'added': return `added ${what}`;
+    case 'edited': return `edited ${what}`;
+    case 'done': return `${pile ? 'marked picked up' : 'marked collected'}: ${l.label}`;
+    case 'undo': return `${pile ? 'undid picked up' : 'undid collected'}: ${l.label}`;
+    case 'deleted': return `deleted ${what}`;
+    case 'restored': return `restored ${what}`;
+    case 'imported': return `imported ${l.label}`;
+    default: return `${l.action} ${l.label}`;
+  }
+}
+
+// What the Undo button does for an entry, or null if nothing can be undone.
+function logUndo(id, l) {
+  const cur = items.get(l.targetId);
+  if (l.undone) return null;
+  if (l.action === 'done' && cur && cur.done) return () => store.update(l.targetId, { done: false, doneAt: null });
+  if (l.action === 'undo' && cur && !cur.done) return () => store.update(l.targetId, { done: true, doneAt: Date.now() });
+  if (l.action === 'added' && cur) return () => { store.remove(l.targetId); schedulePrune(); };
+  if (l.action === 'deleted' && !cur && l.snapshot) return () => {
+    if (l.snapshot.estate && !estates.has(l.snapshot.estate)) l.snapshot.estate = '';
+    store.set(l.targetId, l.snapshot);
+    logAct('restored', l.targetId, l.snapshot);
+  };
+  return null;
+}
+const undoLabel = l => l.action === 'deleted' ? 'Restore' : 'Undo';
+
+function renderLog() {
+  const p = $('logpanel');
+  if (p.hidden) return;
+  const name = el('input', { type: 'text', placeholder: 'Your name', value: getName(), maxLength: 30,
+    oninput: () => { try { localStorage.setItem(NAME_KEY, name.value.trim()); } catch (e) {} } });
+  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Activity' }), name);
+  const rows = [...logs.entries()].sort((a, b) => b[1].ts - a[1].ts).slice(0, 100).map(([id, l]) => {
+    const undo = logUndo(id, l);
+    const row = el('div', { className: 'lg' + (l.undone ? ' undone' : '') },
+      el('span', { className: 'tm', textContent: fmtTime(l.ts) }),
+      el('span', { className: 'tx', textContent: (l.who ? l.who + ' ' : 'Someone ') + logText(l) }));
+    if (undo) row.append(el('button', { textContent: undoLabel(l), onclick: () => { undo(); l.undone = true; store.update(id, { undone: true }); renderLog(); } }));
+    return row;
+  });
+  p.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'Nothing yet. Adds, collections, pickups, edits and deletes show up here, with an Undo button.' })]));
+}
+function closeLog() { $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
+$('btn-log').onclick = () => {
+  const p = $('logpanel');
+  if (p.hidden) { $('estpanel').hidden = true; renderEstatePanel(); }
+  p.hidden = !p.hidden;
+  $('btn-log').setAttribute('aria-expanded', String(!p.hidden));
+  renderLog();
+};
+
 /* ---------------- storage: local demo ---------------- */
 function createLocalStore() {
   const KEY = 'tree-collection-demo';
@@ -1002,7 +1109,7 @@ function createLocalStore() {
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
   return {
     subscribe(f) { cb = f; f(Object.entries(data).map(([id, d]) => ({ type: 'added', id, data: d }))); },
-    add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); },
+    add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); return id; },
     update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
     set(id, d) { data[id] = { ...data[id], ...d }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
     remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); },
@@ -1075,7 +1182,7 @@ async function createFirebaseStore() {
         cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data() })));
       }, e => { console.error(e); showBanner("Can't read the database: " + (e.code || e.message), true); });
     },
-    add(d) { fs.addDoc(col, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); },
+    add(d) { const ref = fs.doc(col); fs.setDoc(ref, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); return ref.id; },
     update(id, p) { fs.updateDoc(fs.doc(db, CONFIG.collection, id), p).catch(onErr); },
     set(id, d) { fs.setDoc(fs.doc(db, CONFIG.collection, id), d, { merge: true }).catch(onErr); },
     remove(id) { fs.deleteDoc(fs.doc(db, CONFIG.collection, id)).catch(onErr); }
@@ -1525,6 +1632,7 @@ async function runImport() {
   out.append(box);
   renderFailures(box);
   if (pts.length) map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+  if (added) logAct('imported', '', { text: `${pl(added, 'house', 'houses')} from a spreadsheet` });
 }
 
 $('btn-upload').onclick = openImport;
