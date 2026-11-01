@@ -12,9 +12,8 @@
   button,input{font:inherit}
 
   header{background:#0b5d3b;color:#fff;padding:8px 12px;z-index:1100}
-  .top{display:flex;align-items:center;gap:10px}
-  h1{font-size:17px;margin:0;flex:1}
-  #status{font-size:12px;white-space:nowrap}
+  #status{font-size:12px;white-space:nowrap;margin-left:auto;opacity:.9}
+  .fbtn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:14px;padding:2px 10px;font-size:13px}
   .filters{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin-top:5px;font-size:13px}
   .filters label{display:flex;align-items:center;gap:5px;white-space:nowrap}
   .filters input{width:17px;height:17px;margin:0;accent-color:#e8590c}
@@ -28,6 +27,7 @@
   .sw.pile{border-radius:4px;background:#1c7ed6}
 
   #banner{padding:6px 12px;font-size:13px;background:#fff3bf;color:#5c4400}
+  #banner button{margin-left:8px;padding:2px 10px;font-size:13px;border-radius:12px;border:1px solid #8a6d00;background:#fff;color:#5c4400}
   #banner.err{background:#ffe3e3;color:#7d1a1a}
 
   #mapwrap{position:relative;flex:1;min-height:0}
@@ -40,13 +40,13 @@
   #btn-pile{background:#1c7ed6}
 
   /* Map icons: a green tree per house, a stack of trees per pile; greyed out once collected */
-  .ico{position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+  .ico{position:relative;filter:drop-shadow(0 1px 3px rgba(0,0,0,.55))}
   .ico svg{display:block;width:100%;height:100%}
   .ico.done{filter:grayscale(1) drop-shadow(0 1px 1px rgba(0,0,0,.3));opacity:.6}
-  .cnt{position:absolute;top:-6px;right:-8px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#fff;border:2px solid #e8590c;color:#1b1b1b;font:700 12px/16px system-ui,sans-serif;text-align:center}
-  .ico.pile .cnt{border-color:#1c7ed6}
-  .hico svg{display:block;height:22px;width:22px}
-  .hico.pile svg{width:30px}
+  .cnt{position:absolute;top:-5px;right:-7px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#fff;border:2px solid #e8590c;color:#1b1b1b;font:700 12px/16px system-ui,sans-serif;text-align:center}
+  .ico.req .cnt{border-color:#40c057}
+  .ico.pile .cnt{border-color:#1b5e20}
+  .hico svg{display:block;height:24px;width:24px}
   .temp-pin{font-size:34px;line-height:34px;text-align:center;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
 
   /* Popups */
@@ -86,7 +86,19 @@
   .ico.approx .cnt{border-style:dashed}
 
   /* Upload from a spreadsheet */
-  #bar #btn-upload{flex:.6;background:#495057}
+  #bulk{margin-top:10px;font-size:13px;color:#555}
+  #bulk button{background:none;border:0;padding:4px 0;color:#1864ab;text-decoration:underline;font-size:14px;cursor:pointer}
+  #estpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
+  #estpanel[hidden]{display:none}
+  #estpanel .eh{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-weight:600}
+  #estpanel .eh span{flex:1}
+  #estpanel .eh button{padding:3px 9px;font-size:12px;border:1px solid #ccc;background:#f6f6f6;border-radius:10px}
+  #estpanel label{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #eee;font-size:14px}
+  #estpanel input{width:18px;height:18px;margin:0}
+  #estpanel .dot{width:14px;height:14px;border-radius:50%;border:2px solid;flex:none}
+  #estpanel .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #estpanel .ct{color:#777;font-size:12px}
+  #imp-link{display:flex;gap:8px;margin-top:6px}
   .modal{position:fixed;inset:0;z-index:1400;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}
   .modal[hidden]{display:none}
   .card{background:#fff;border-radius:14px;padding:16px;width:min(680px,100%);box-shadow:0 8px 30px rgba(0,0,0,.4)}
@@ -112,10 +124,6 @@
 <body>
 
 <header>
-  <div class="top">
-    <h1>🎄 Tree collection</h1>
-    <span id="status"></span>
-  </div>
   <div class="stats">
     <span class="chip"><span class="hico req" id="ico-req"></span><span id="stat-req">…</span></span>
     <span class="chip"><span class="hico pile" id="ico-pile"></span><span id="stat-pile">…</span></span>
@@ -125,21 +133,23 @@
     <label><input type="checkbox" id="show-requests" checked> Addresses</label>
     <label><input type="checkbox" id="show-piles" checked> Piles</label>
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
-    <label><input type="checkbox" id="show-estates" checked> Estates</label>
+    <label><input type="checkbox" id="show-estates" checked> Outlines</label>
+    <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
+    <span id="status"></span>
   </div>
 </header>
 
-<div id="banner" hidden></div>
+<div id="banner" hidden><span id="banner-text"></span><span id="banner-actions"></span></div>
 
 <div id="mapwrap">
   <div id="map"></div>
   <button id="locate" title="Where am I?" aria-label="Where am I?">◎</button>
+  <div id="estpanel" hidden></div>
 </div>
 
 <div id="bar">
   <button id="btn-address">+ Address</button>
   <button id="btn-pile">+ Pile</button>
-  <button id="btn-upload" title="Add many houses from a spreadsheet">⬆ Sheet</button>
 </div>
 
 <div id="sheet" hidden>
@@ -151,11 +161,12 @@
       <button id="btn-search" class="sec">Search</button>
     </div>
     <ul id="results"></ul>
+    <div id="bulk">Have a list? <button id="btn-upload" type="button">⬆ Add many from a spreadsheet</button><span id="bulk-n"></span></div>
   </div>
   <label id="lbl-note" for="f-note" style="margin-top:8px"></label>
   <input id="f-note" type="text" autocomplete="off" style="width:100%">
   <div id="estate-block">
-    <label for="f-estate" style="margin-top:8px">Estate and pickup time (optional)</label>
+    <label id="lbl-estate" for="f-estate" style="margin-top:8px">Estate and pickup time (optional)</label>
     <div class="row" style="margin-top:0">
       <input id="f-estate" type="text" list="estate-list" autocomplete="off" placeholder="Pick an estate or type a new one">
       <input id="f-time" type="time" aria-label="Pickup time" style="width:128px;padding:9px;font-size:16px;border:1px solid #bbb;border-radius:8px">
@@ -198,8 +209,10 @@
   <div class="card">
     <h2>⬆ Add houses from a spreadsheet</h2>
     <div id="imp-step1">
-      <p class="small">Upload an Excel file (.xlsx, .xls) or a CSV. From Google Sheets use File → Download, or simply copy the cells and paste them below. I'll work out which column is which and you can correct it on the next screen. Names and phone numbers in the sheet are ignored.</p>
+      <p class="small">Upload an Excel file (.xlsx, .xls), a CSV or a TSV (tab-separated) file, paste cells copied from a sheet, or paste a Google Sheets link. I'll work out which column is which and you can correct it on the next screen. Rows without coordinates are found on the map for you. Names and phone numbers in the sheet are ignored.</p>
       <input id="imp-file" type="file" accept=".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt">
+      <label for="imp-url">…or a Google Sheets link (the sheet must be shared as "Anyone with the link can view")</label>
+      <div id="imp-link"><input id="imp-url" type="text" inputmode="url" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="imp-fetch" class="sec">Load</button></div>
       <label for="imp-paste">…or paste cells here (include the title row)</label>
       <textarea id="imp-paste" rows="4"></textarea>
       <div class="row"><button id="imp-parse" class="sec">Read pasted cells</button></div>
@@ -290,8 +303,8 @@ const CONFIG = {
   // Optional: Google Maps API key for better address search (needs the "Maps JavaScript API" and
   // "Geocoding API" enabled; restrict the key to your site's address). Leave "" to use free OpenStreetMap-based search.
   googleKey: "",
-  startCenter: [53.6528, -6.6814],  // where the map opens – change to your area
-  startZoom: 14,
+  startCenter: [53.3816, -6.5910],  // where the map opens (Maynooth) – change to your area
+  startZoom: 15,
   countryCodes: "ie",               // limit address search to this country ("" = worldwide)
   collection: "items"
 };
@@ -327,49 +340,57 @@ if (CONFIG.cartoKey) {
   }).addTo(map);
 }
 
-// Tree drawn in a 32x33 box: three stacked tiers and a trunk, outlined in white so it pops off the grey map.
-const treeShape = fill =>
-  `<g stroke="#fff" stroke-width="1.6" stroke-linejoin="round">` +
-  `<polygon points="16,1 23,12 9,12" fill="${fill}"/>` +
-  `<polygon points="16,7 26,20 6,20" fill="${fill}"/>` +
-  `<polygon points="16,14 29,28 3,28" fill="${fill}"/>` +
-  `<rect x="13.5" y="28" width="5" height="4" fill="#6b4a2b"/></g>`;
-const TREE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 33">${treeShape('#2f9e44')}</svg>`;
-// Pile: three trees (two smaller at the back) resting on a log.
-const PILE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 38">` +
-  `<rect x="2" y="31" width="48" height="5" rx="2.5" fill="#6b4a2b" stroke="#fff" stroke-width="1.6"/>` +
-  `<g transform="translate(0 4) scale(.8)">${treeShape('#1b6e32')}</g>` +
-  `<g transform="translate(24 4) scale(.8)">${treeShape('#1b6e32')}</g>` +
-  `<g transform="translate(9.5 -1)">${treeShape('#2b8a3e')}</g></svg>`;
+// Modern round badges: a white tree on a green disc (lighter green = address, darker green = pile of trees).
+const treeGlyph = (cx, cy, k, fill) =>
+  `<g transform="translate(${cx} ${cy}) scale(${k})" fill="${fill}" stroke="${fill}" stroke-width="1.4" stroke-linejoin="round">` +
+  `<path d="M0-9 L5.5-2 H2.6 L7-7.6 Z" fill="none" stroke="none"/>` +
+  `<path d="M0-10 L5-3.5 H2.2 L6.5 2.5 H1.2 V6.5 H-1.2 V2.5 H-6.5 L-2.2-3.5 H-5 Z"/></g>`;
+const badge = (fill, inner) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="${fill}" stroke="#fff" stroke-width="2.6"/>${inner}</svg>`;
+const TREE_SVG = badge('#51cf66', treeGlyph(20, 21, 1.45, '#fff'));
+const PILE_SVG = badge('#237a3b', treeGlyph(12.5, 24, .85, '#d3f9d8') + treeGlyph(27.5, 24, .85, '#d3f9d8') + treeGlyph(20, 19, 1.05, '#fff'));
 $('ico-req').innerHTML = TREE_SVG;
 $('ico-pile').innerHTML = PILE_SVG;
 
 function iconFor(d) {
   const pile = d.type === 'pile';
   const n = Number(d.trees) || 1;
-  const w = pile ? 56 : 36, h = pile ? 41 : 37;
+  const w = pile ? 46 : 38, h = w;
   return L.divIcon({
     className: '',
     html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}${d.approx ? ' approx' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}<span class="cnt">${n}</span></div>`,
-    iconSize: [w, h], iconAnchor: [w / 2, h - 3], popupAnchor: [0, -(h - 3)]
+    iconSize: [w, h], iconAnchor: [w / 2, h / 2], popupAnchor: [0, -(h / 2)]
   });
 }
 
 const view = { request: true, pile: true, collected: true, estate: true };  // which markers are shown
+const hiddenEstates = new Set();   // estates switched off in the Estates panel (this device only)
 
 function setVisible(m, d) {
-  const vis = (d.type === 'pile' ? view.pile : view.request) && (view.collected || !d.done);
+  const vis = (d.type === 'pile' ? view.pile : view.request) && (view.collected || !d.done) && !(d.estate && hiddenEstates.has(d.estate));
   if (vis && !map.hasLayer(m)) m.addTo(map);
   if (!vis && map.hasLayer(m)) m.remove();
 }
 
 /* ---------------- estates ---------------- */
 // An estate is a document in the same collection as the houses ({type:'estate', name, time}); houses point at it by id.
-const ESTATE_COLOURS = ['#d6336c', '#7048e8', '#1c7ed6', '#f08c00', '#0c8599', '#9c36b5', '#e8590c', '#364fc7'];
-const estateColour = id => {
+// Soft pastel fills (no greens, so they don't blend with the tree badges). Each estate stores the index it was given.
+const ESTATE_COLOURS = ['#f7a8c4', '#9fcdf3', '#c4b5f2', '#fbc590', '#f4de80', '#8fdcd6', '#f5a7a2', '#e3aee8', '#d8c4a2', '#aab6f3', '#a9e1c4', '#f8b87a'];
+const shade = (hex, f) => '#' + [1, 3, 5].map(i => Math.round(parseInt(hex.slice(i, i + 2), 16) * f).toString(16).padStart(2, '0')).join('');
+const colourIndex = id => {
+  const e = estates.get(id);
+  if (e && Number.isInteger(e.ci)) return e.ci % ESTATE_COLOURS.length;
   let h = 0;
   for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return ESTATE_COLOURS[h % ESTATE_COLOURS.length];
+  return h % ESTATE_COLOURS.length;
+};
+const estateColour = id => ESTATE_COLOURS[colourIndex(id)];
+const estateStroke = id => shade(estateColour(id), .62);
+// next colour = the one used by the fewest existing estates, so neighbours look different
+const nextColourIndex = () => {
+  const use = ESTATE_COLOURS.map(() => 0);
+  for (const id of estates.keys()) use[colourIndex(id)]++;
+  return use.indexOf(Math.min(...use));
 };
 const estateLayer = L.layerGroup().addTo(map);
 
@@ -429,56 +450,61 @@ function ensureEstate(name, time) {
   const base = 'estate-' + (slugify(name) || 'x');
   let id = base, n = 2;
   while (estates.has(id)) id = base + '-' + n++;
-  const e = { type: 'estate', name, time: time || '' };
+  const e = { type: 'estate', name, time: time || '', ci: nextColourIndex(), created: Date.now() };
   estates.set(id, e);            // optimistic, so the next lookup in this session finds it straight away
   store.set(id, e);
   refreshEstateList();
   return id;
 }
 
-const estateHouses = id => [...items.values()].filter(d => d.type !== 'pile' && d.estate === id);
+const estateMembers = id => [...items.values()].filter(d => d.estate === id);
 
 function estatePopup(id) {
   const e = estates.get(id);
   if (!e) return '';
-  const hs = estateHouses(id);
+  const all = estateMembers(id);
+  const hs = all.filter(d => d.type !== 'pile'), ps = all.filter(d => d.type === 'pile');
   const done = hs.filter(d => d.done).length;
   const box = el('div', { className: 'pop' });
   box.append(
     el('div', { className: 'pop-kind', textContent: '🏘 Estate' }),
     el('div', { className: 'pop-text', textContent: e.name }),
     el('div', { className: 'pop-meta', textContent:
-      (e.time ? `Pickup ${fmtHM(e.time)}` : 'No pickup time set') + ` · ${done} of ${pl(hs.length, 'house', 'houses')} collected` }),
+      (e.time ? `Pickup ${fmtHM(e.time)}` : 'No pickup time set') + ` · ${done} of ${pl(hs.length, 'house', 'houses')} collected` +
+      (ps.length ? ` · ${pl(ps.length, 'pile', 'piles')}` : '') }),
     el('button', { className: 'pri', textContent: 'Edit estate', onclick: () => openEstateSheet(id) })
   );
   return box;
 }
 
 let estTimer = 0;
-function scheduleEstates() { clearTimeout(estTimer); estTimer = setTimeout(drawEstates, 40); }
+function scheduleEstates() { clearTimeout(estTimer); estTimer = setTimeout(() => { drawEstates(); renderEstatePanel(); }, 40); }
 
 function drawEstates() {
   estateLayer.clearLayers();
   if (!view.estate) return;
   const byEstate = new Map();
   for (const d of items.values()) {
-    if (d.type === 'pile' || !d.estate || !estates.has(d.estate)) continue;
+    if (!d.estate || !estates.has(d.estate) || hiddenEstates.has(d.estate)) continue;
     if (!byEstate.has(d.estate)) byEstate.set(d.estate, []);
-    byEstate.get(d.estate).push({ lat: d.lat, lng: d.lng, done: !!d.done });
+    byEstate.get(d.estate).push({ lat: d.lat, lng: d.lng, done: !!d.done, pile: d.type === 'pile' });
   }
   for (const [id, hs] of byEstate) {
     const e = estates.get(id);
-    const done = hs.filter(h => h.done).length, all = done === hs.length;
-    const colour = all ? '#868e96' : estateColour(id);
+    const houses = hs.filter(h => !h.pile), piles = hs.filter(h => h.pile);
+    const done = houses.filter(h => h.done).length, all = hs.every(h => h.done);
+    const colour = all ? '#adb5bd' : estateColour(id), edge = all ? '#868e96' : estateStroke(id);
     const hull = paddedHull(hs, 22);
-    const poly = L.polygon(hull, { color: colour, weight: 2, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.08 : 0.16 }).addTo(estateLayer);
+    const poly = L.polygon(hull, { color: edge, weight: 2.5, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.18 : 0.4 }).addTo(estateLayer);
     poly.bindPopup(() => estatePopup(id));
     // label sits just above the outline's northern edge so it doesn't cover the trees
     const top = hull.reduce((a, p) => p[0] > a[0] ? p : a, hull[0]);
     const midLng = hull.reduce((s, p) => s + p[1], 0) / hull.length;
     const label = el('div', { className: 'elabel' + (all ? ' done' : ''),
-      textContent: e.name + (e.time ? ' · ' + fmtHM(e.time) : '') + ` · ${done}/${hs.length}` + (all ? ' ✔' : '') });
-    label.style.borderColor = colour;
+      textContent: e.name + (e.time ? ' · ' + fmtHM(e.time) : '') +
+        (houses.length ? ` · ${done}/${houses.length}` : '') + (piles.length ? ` · ${pl(piles.length, 'pile', 'piles')}` : '') + (all ? ' ✔' : '') });
+    label.style.borderColor = edge;
+    label.style.background = all ? 'rgba(255,255,255,.96)' : shade(colour, 1) + 'f2';
     L.marker([top[0], midLng], { interactive: false, keyboard: false, zIndexOffset: -500,
       icon: L.divIcon({ className: '', iconSize: [0, 0], html: label }) }).addTo(estateLayer);
   }
@@ -497,12 +523,49 @@ function estateAt(ll, text, nameOnly) {
   if (best || nameOnly) return best;
   let near = null;                                      // 2) an existing house of an estate is within 60 m
   for (const d of items.values()) {
-    if (d.type === 'pile' || !d.estate || !estates.has(d.estate)) continue;
+    if (!d.estate || !estates.has(d.estate)) continue;
     const m = map.distance(ll, [d.lat, d.lng]);
     if (m <= 60 && (!near || m < near.m)) near = { id: d.estate, m, why: 'location' };
   }
   return near;
 }
+
+/* Estates panel: switch each estate (outline + its houses and piles) on or off */
+function renderEstatePanel() {
+  const p = $('estpanel');
+  const list = [...estates.entries()].sort((a, b) => a[1].name.localeCompare(b[1].name));
+  $('btn-estates').textContent = (hiddenEstates.size ? `Estates (${hiddenEstates.size} off)` : 'Estates') + (p.hidden ? ' ▾' : ' ▴');
+  if (p.hidden) return;
+  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Show estates' }),
+    el('button', { textContent: 'All', onclick: () => setAllEstates(true) }),
+    el('button', { textContent: 'None', onclick: () => setAllEstates(false) }));
+  const rows = list.map(([id, e]) => {
+    const mem = estateMembers(id), left = mem.filter(d => !d.done).length;
+    const box = el('input', { type: 'checkbox', checked: !hiddenEstates.has(id), onchange: () => toggleEstate(id, box.checked) });
+    const dot = el('span', { className: 'dot' });
+    dot.style.background = estateColour(id); dot.style.borderColor = estateStroke(id);
+    return el('label', {}, box, dot, el('span', { className: 'nm', textContent: e.name + (e.time ? ' · ' + fmtHM(e.time) : '') }),
+      el('span', { className: 'ct', textContent: left + ' left' }));
+  });
+  p.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'No estates yet. Give an address or pile an estate name when you add it.' })]));
+}
+function toggleEstate(id, on) {
+  if (on) hiddenEstates.delete(id); else hiddenEstates.add(id);
+  for (const [mid, m] of markers) setVisible(m, items.get(mid));
+  scheduleEstates();
+}
+function setAllEstates(on) {
+  hiddenEstates.clear();
+  if (!on) for (const id of estates.keys()) hiddenEstates.add(id);
+  for (const [mid, m] of markers) setVisible(m, items.get(mid));
+  scheduleEstates();
+}
+$('btn-estates').onclick = () => {
+  const p = $('estpanel');
+  p.hidden = !p.hidden;
+  $('btn-estates').setAttribute('aria-expanded', String(!p.hidden));
+  renderEstatePanel();
+};
 
 /* estate edit sheet */
 let estEditId = null;
@@ -536,7 +599,7 @@ $('e-delete').onclick = () => {
   if (!e || !store) return;
   if (!confirm(`Delete the estate "${e.name}"? Its houses stay on the map but are no longer grouped.`)) return;
   for (const [hid, d] of items) if (d.estate === id) store.update(hid, { estate: '' });
-  estates.delete(id);
+  estates.delete(id); hiddenEstates.delete(id);
   store.remove(id);
   refreshEstateList(); scheduleEstates();
   $('esheet').hidden = true;
@@ -589,7 +652,7 @@ function popupFor(id) {
   if (!d) return '';
   const isReq = d.type !== 'pile';
   const note = d.note ?? (isReq ? '' : d.text) ?? '';
-  const est = isReq && d.estate ? estates.get(d.estate) : null;
+  const est = d.estate ? estates.get(d.estate) : null;
   const box = el('div', { className: 'pop' });
   box.append(
     el('div', { className: 'pop-kind', textContent: isReq ? '🌲 Collection request' : '🌲🌲 Pile' }),
@@ -619,7 +682,10 @@ function popupFor(id) {
     el('a', { textContent: 'Directions', target: '_blank', rel: 'noopener',
       href: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}` }),
     el('button', { className: 'del', textContent: 'Delete', onclick: () => {
-      if (confirm('Delete this entry completely?')) { store.remove(id); map.closePopup(); }
+      const msg = isReq
+        ? "Delete this address completely?\n\nIf the tree has been collected, please cancel and tap “✔ Mark collected” instead. That keeps the record and the counts right (and you can undo it). Only delete an address that was added by mistake."
+        : "Delete this pile completely?\n\nIf the pile has been picked up, please cancel and tap “🚚 Mark picked up” instead. That keeps the record and the counts right (and you can undo it). Only delete a pile that was added by mistake.";
+      if (confirm(msg)) { store.remove(id); map.closePopup(); }
     }})
   ));
   return box;
@@ -649,7 +715,7 @@ function closeComposer() {
 
 // Pre-fill the estate field from the typed address (estate name mentioned) or from nearby houses.
 function suggestEstate(nameOnly) {
-  if (!comp || comp.mode !== 'request' || comp.estateTouched) return;
+  if (!comp || comp.estateTouched) return;
   const hit = estateAt(comp.marker.getLatLng(), $('f-text').value, nameOnly);
   if (!hit) return;
   const e = estates.get(hit.id);
@@ -672,7 +738,10 @@ function openComposer(mode, editId, prefill) {
   $('sheet-title').textContent = ex ? (isReq ? '✏️ Edit address' : '✏️ Edit pile')
                                     : (isReq ? '🏠 Add an address for collection' : '📦 Add a pile');
   $('addr-block').hidden = !isReq;
-  $('estate-block').hidden = !isReq;
+  $('estate-block').hidden = false;
+  $('lbl-estate').textContent = isReq ? 'Estate and pickup time (optional)' : 'Estate this pile is in, and its pickup time (optional)';
+  $('bulk').hidden = !!ex || !isReq;
+  $('bulk-n').textContent = lastFailures.length ? ` (${lastFailures.length} still to place)` : '';
   if (isReq && CONFIG.googleKey) loadGoogle().catch(() => {});
   $('lbl-note').textContent = isReq ? 'Note (optional), e.g. "tree is at the side gate"' : 'Note (optional), e.g. "outside no. 12"';
   $('f-text').value = ex && isReq ? (ex.text || '') : (pf.text || '');
@@ -709,6 +778,7 @@ function openComposer(mode, editId, prefill) {
       const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
       marker.setLatLng(ll); focusOn(ll, 18);
       setHint('Pin placed at your location. Drag it if it looks off.');
+      suggestEstate();
     }, () => {
       if (comp && comp.marker === marker) setHint("Couldn't get GPS. Drag the pin to where the pile is.");
     }, { enableHighAccuracy: true, timeout: 10000 });
@@ -873,7 +943,7 @@ $('btn-save').onclick = () => {
   if (isReq && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
   const ll = comp.marker.getLatLng();
   const data = { text, note: $('f-note').value.trim(), trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng, approx: !!comp.approx };
-  if (isReq) data.estate = ensureEstate($('f-estate').value, $('f-time').value);
+  data.estate = ensureEstate($('f-estate').value, $('f-time').value);
   if (comp.editId) {
     store.update(comp.editId, data);
   } else {
@@ -907,7 +977,9 @@ $('locate').onclick = () => {
 
 function showBanner(text, isErr, append) {
   const b = $('banner');
-  b.textContent = (append && !b.hidden ? b.textContent + ' ' : '') + text;
+  let t = $('banner-text');
+  if (!t || !b.contains(t)) { b.replaceChildren(); t = el('span', { id: 'banner-text' }); b.append(t, el('span', { id: 'banner-actions' })); }
+  t.textContent = (append && !b.hidden ? t.textContent + ' ' : '') + text;
   if (isErr) b.className = 'err'; else if (!append) b.className = '';
   b.hidden = false;
 }
@@ -933,8 +1005,52 @@ function createLocalStore() {
     add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); },
     update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
     set(id, d) { data[id] = { ...data[id], ...d }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
-    remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); }
+    remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); },
+    isEmpty() { return !Object.values(data).some(d => d.type === 'request' || d.type === 'pile'); }
   };
+}
+
+/* ---------------- sample data (demo mode only, when nothing is stored yet) ---------------- */
+// Real places of interest in Maynooth, used as stand-in "addresses". Coordinates are approximate.
+const SAMPLE_ESTATES = [
+  ['castle', 'Castle quarter', '10:00', 0],
+  ['station', 'Station quarter', '11:30', 1],
+  ['campus', 'College quarter', '13:00', 2]
+];
+const SAMPLE_PLACES = [
+  ['Maynooth Castle, Main Street', 53.38085, -6.59442, 1, 'castle', 'Keep tree by the gate', false],
+  ['Maynooth Town Centre, Main Street', 53.38157, -6.59098, 2, 'castle', '', false],
+  ['Maynooth Post Office, Main Street', 53.38130, -6.59250, 1, 'castle', '', true],
+  ['Maynooth Railway Station', 53.37852, -6.58854, 1, 'station', 'Side entrance', false],
+  ['Royal Canal Harbour', 53.37930, -6.58730, 3, 'station', '', false],
+  ['Glenroyal Hotel, Straffan Road', 53.37900, -6.59620, 1, 'station', '', false],
+  ["St Patrick's College, Maynooth", 53.38130, -6.60130, 2, 'campus', 'Ask at the gate lodge', false],
+  ['Maynooth University, North Campus', 53.38430, -6.60080, 1, 'campus', '', false],
+  ['Carton House (demo only, outside the area)', 53.39000, -6.56600, 4, '', '', false]
+];
+const SAMPLE_PILES = [
+  ['Pile at the castle car park', 53.38105, -6.59360, 4, 'castle', false],
+  ['Pile by the canal harbour', 53.37950, -6.58790, 6, 'station', false],
+  ['Pile at the college gate (already picked up)', 53.38100, -6.60040, 5, 'campus', true]
+];
+function seedSample(st) {
+  const ids = {};
+  for (const [k, name, time, ci] of SAMPLE_ESTATES) {
+    ids[k] = 'estate-sample-' + k;
+    st.set(ids[k], { type: 'estate', name, time, ci, created: Date.now(), sample: true });
+  }
+  for (const [text, lat, lng, trees, est, note, done] of SAMPLE_PLACES)
+    st.add({ type: 'request', text, note, trees, lat, lng, estate: ids[est] || '', approx: false, done, doneAt: done ? Date.now() : null, sample: true });
+  for (const [note, lat, lng, trees, est, done] of SAMPLE_PILES)
+    st.add({ type: 'pile', text: '', note, trees, lat, lng, estate: ids[est] || '', approx: false, done, doneAt: done ? Date.now() : null, sample: true });
+}
+function clearSample() {
+  for (const [id, d] of [...items]) if (d.sample) store.remove(id);
+  for (const [id, e] of [...estates]) if (e.sample) { estates.delete(id); hiddenEstates.delete(id); store.remove(id); }
+  try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
+  $('banner-actions').replaceChildren();
+  showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+  refreshEstateList(); scheduleEstates();
 }
 
 /* ---------------- storage: Firebase Firestore ---------------- */
@@ -1152,6 +1268,21 @@ function composeRows(data, fields, opts = {}) {
   }
   return out;
 }
+// A Google Sheets link -> the addresses to try for a CSV download, or null if it isn't a Sheets link.
+function googleSheetUrls(input) {
+  const raw = String(input ?? '').trim();
+  const m = /^(?:https?:\/\/)?docs\.google\.com\/spreadsheets\/d\/(e\/)?([A-Za-z0-9_-]+)([^\s]*)$/i.exec(raw);
+  if (!m) return null;
+  const published = !!m[1], id = m[2], rest = m[3] || '';
+  const g = /[?&#]gid=(\d+)/.exec(rest);
+  const gid = g ? g[1] : '';
+  const base = 'https://docs.google.com/spreadsheets/d/' + (published ? 'e/' : '') + id;
+  if (published) return [base + '/pub?output=csv' + (gid ? '&gid=' + gid : '')];
+  return [
+    base + '/gviz/tq?tqx=out:csv' + (gid ? '&gid=' + gid : ''),
+    base + '/export?format=csv' + (gid ? '&gid=' + gid : '')
+  ];
+}
 /* ==== IMPORT HELPERS END ==== */
 
 /* ---------------- spreadsheet import (UI) ---------------- */
@@ -1298,6 +1429,28 @@ async function handleFile(file) {
   }
 }
 
+async function handleSheetLink() {
+  const urls = googleSheetUrls($('imp-url').value);
+  if (!urls) { $('imp-msg').textContent = "That doesn't look like a Google Sheets link (it should start with https://docs.google.com/spreadsheets/d/…)."; return; }
+  $('imp-msg').textContent = 'Loading the sheet…';
+  let text = null;
+  for (const u of urls) {
+    try {
+      const r = await fetch(u);
+      if (!r.ok) continue;
+      const t = await r.text();
+      if (/^\s*<(!doctype|html)/i.test(t)) continue;   // a sign-in page, not data
+      text = t; break;
+    } catch (e) { /* blocked, not shared or offline: try the next form of the link */ }
+  }
+  if (text == null) {
+    $('imp-msg').textContent = "Couldn't read that sheet. In Google Sheets choose Share → General access → “Anyone with the link” (Viewer) and try again, or use File → Download → CSV, or copy the cells and paste them below.";
+    return;
+  }
+  $('imp-msg').textContent = '';
+  loadTables([{ name: 'Google Sheet', rows: parseDelimited(text) }]);
+}
+
 /* ---- geocoding for bulk rows ---- */
 const geoCache = new Map();
 async function locateRow(row, anchor) {
@@ -1376,6 +1529,8 @@ async function runImport() {
 
 $('btn-upload').onclick = openImport;
 $('imp-close').onclick = closeImport;
+$('imp-fetch').onclick = handleSheetLink;
+$('imp-url').onkeydown = e => { if (e.key === 'Enter') handleSheetLink(); };
 $('imp-file').onchange = e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ''; };
 $('imp-parse').onclick = () => {
   const t = $('imp-paste').value;
@@ -1403,7 +1558,13 @@ const isSet = v => v && !String(v).startsWith('PASTE');
   } else {
     demoMode = true;
     store = createLocalStore();
-    showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+    let cleared = false;
+    try { cleared = !!localStorage.getItem('tree-collection-sample-cleared'); } catch (e) {}
+    const seeded = !cleared && store.isEmpty();
+    if (seeded) seedSample(store);
+    showBanner(seeded ? 'Demo mode with sample data around Maynooth: data is stored only on this device. Add your Firebase config to share it between phones.'
+                      : 'Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+    if (seeded) $('banner-actions').append(el('button', { textContent: 'Clear sample data', onclick: () => { if (confirm('Remove the sample addresses, piles and estates?')) clearSample(); } }));
   }
   setStatus();
   if (needsKey) showBanner('Map tiles are blocked when opening this file directly: paste a free CARTO key into CONFIG.cartoKey (or host the page online).', true, true);
@@ -1412,7 +1573,7 @@ const isSet = v => v && !String(v).startsWith('PASTE');
     updateStats();
     if (!fitted && items.size && !comp) {
       fitted = true;
-      const pts = [...items.values()].map(d => [d.lat, d.lng]);
+      const pts = [...items.values()].filter(d => !String(d.text).includes('outside the area')).map(d => [d.lat, d.lng]);
       map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
     }
   });

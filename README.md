@@ -3,15 +3,33 @@
 One-page web app: add addresses for tree collection, mark them collected, drop piles, mark piles picked up. Everything shows live on a shared map.
 
 - **Green tree** = a house with a tree to collect; **stack of trees** = a pile waiting for the van. Both turn grey once collected or picked up.
-- The number on each icon is the number of trees (orange badge for houses, blue for piles)
+- The number on each icon is the number of trees (round badge: lighter green for houses, darker green for piles; greyed out once done)
 - Tap an icon to mark it collected/picked up (and undo), **Edit** it (address, note, tree count, move the pin), get directions, or delete it
 - Houses and piles can both carry a note, e.g. "tree is at the side gate" or "outside no. 12"
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
+## Estates
+- When adding or editing a house **or a pile** you can give it an **estate** and a **pickup time**. Pick an existing estate from the list or type a new name and it is created.
+- The app suggests the estate for you: if the address you typed contains an existing estate's name, or the pin lands within about 60 m of a house in that estate, the estate field is filled in (and you can change it).
+- On the map each estate is a pastel-coloured outline (every estate gets its own colour) around its houses with a label: name, pickup time and how many houses are collected (e.g. "Beech Park · 10:00am · 2/8"). It turns grey with a tick when every house is done. Tap the outline to edit the estate's name or pickup time, or to delete the estate (its houses stay).
+- The **Outlines** checkbox in the Show row hides all the outlines. The **Estates ▾** button opens a list where each estate can be switched on or off separately (its outline, houses and piles); All/None buttons switch them all.
+
+## Adding many houses from a spreadsheet
+Tap **+ Address**, then **⬆ Add many from a spreadsheet** under the search box.
+1. Upload an Excel file (.xlsx/.xls), a CSV or a TSV (tab-separated) file, **or** copy the cells in Excel or Google Sheets and paste them into the box, **or** paste a Google Sheets link (the sheet must be shared as "Anyone with the link can view", or published to the web; private sheets can't be read by a web page without a Google sign-in setup, so for those copy and paste instead).
+2. The app guesses which column is which from the titles and the contents: a single address column, or separate house number, street, estate, town, county and Eircode columns, plus number of trees, notes, pickup time and latitude/longitude. Title rows above the header are skipped. Names, phone numbers and email columns are ignored. Check the "Holds" menus and fix anything wrong.
+3. Optionally enter a town/county (added to every search so the right place is found) and a default estate for rows without one.
+4. Tap Import. Each address is located one at a time (about 1-2 seconds each on the free search, so allow a few minutes for a big list).
+   - Houses found only at street or estate level are placed approximately, fanned out around that spot, and show a dashed number badge. Tap one and choose Edit to drag it onto the house.
+   - Addresses that can't be found are listed with a **Place on map** button; you can come back to the list from the upload link in the + Address sheet.
+   - Rows that have latitude/longitude columns filled in are placed exactly; every other row is looked up on the map automatically.
+   - Rows already on the map (same address text) are skipped, so re-uploading is safe.
+   - The `sample-data/` folder has example sheets that parse and ones that don't; `sample-data/REPORT.md` shows what the app makes of each.
+
 ## Try it first (no setup)
 
-Open `index.html` in a browser. With no Firebase config it runs in **demo mode** (data saved only in that browser). Note that GPS only works once the page is served over HTTPS, i.e. after you deploy. Map tiles from a local file need a free CARTO key (see Notes at the bottom).
+Open `index.html` in a browser. With no Firebase config it runs in **demo mode** (data saved only in that browser). If nothing is stored yet it starts with sample addresses, piles and estates around Maynooth; tap **Clear sample data** in the banner to remove them. Note that GPS only works once the page is served over HTTPS, i.e. after you deploy. Map tiles from a local file need a free CARTO key (see Notes at the bottom).
 
 ## Setup (about 15 minutes, free, no card needed)
 
@@ -62,4 +80,4 @@ Notes: a page opened from a local file sends no referrer, so a referrer-restrict
 
 ## Notes
 - The Firebase API key in the page is meant to be public. What protects the data is the obscure URL plus the expiring rules in `firestore.rules`.
-- Address search uses OpenStreetMap's free Nominatim service (with Photon as a backup), which is fine for light use like this. Map tiles are OpenStreetMap's own once the page is hosted. If you open `index.html` straight from your computer, OpenStreetMap blocks its tiles, so request a free key from https://www.carto.com/basemaps/apikey/ (non-commercial use, no account) and paste it into `cartoKey` in the config block.
+- Addresses from a spreadsheet are sent to the address search service (OpenStreetMap's Nominatim/Photon, or Google if you add a key) to be located. Address search uses OpenStreetMap's free Nominatim service (with Photon as a backup), which is fine for light use like this. Map tiles are OpenStreetMap's own once the page is hosted. If you open `index.html` straight from your computer, OpenStreetMap blocks its tiles, so request a free key from https://www.carto.com/basemaps/apikey/ (non-commercial use, no account) and paste it into `cartoKey` in the config block.
