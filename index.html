@@ -228,6 +228,19 @@
   </div>
 </div>
 
+<script>
+/* Safety net: shows problems on the page itself, because a blank map with an empty console is hard to diagnose. */
+(function () {
+  function show(msg) { var b = document.getElementById('banner'); if (!b) return; b.textContent = msg; b.className = 'err'; b.hidden = false; }
+  window.addEventListener('error', function (e) { show('Error: ' + (e.message || 'script error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { show('Error: ' + ((e.reason && e.reason.message) || e.reason)); });
+  setTimeout(function () {
+    if (window.__appReady) return;
+    window.__watchdogShown = true;
+    show("The app hasn't finished starting. Check your internet connection and open this page in a normal browser tab (not a preview pane or sidebar, which can block scripts). Press F12 and look at the Network tab to see what is stuck.");
+  }, 12000);
+})();
+</script>
 <script type="module">
 /* ---------------- load Leaflet (with fallback CDNs) ---------------- */
 const LEAFLET_SOURCES = [
@@ -235,17 +248,19 @@ const LEAFLET_SOURCES = [
   { js: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js', css: 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css' },
   { js: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js', css: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css' }
 ];
-const loadTag = (tag, attrs) => new Promise((ok, fail) => {
+const loadTag = (tag, attrs, ms = 8000) => new Promise((ok, fail) => {
   const e = document.createElement(tag);
   Object.assign(e, attrs);
-  e.onload = ok; e.onerror = () => { e.remove(); fail(new Error('failed ' + (attrs.src || attrs.href))); };
+  const t = setTimeout(() => { e.remove(); fail(new Error('timed out ' + (attrs.src || attrs.href))); }, ms);   // a stalled download must not freeze the page
+  e.onload = () => { clearTimeout(t); ok(); };
+  e.onerror = () => { clearTimeout(t); e.remove(); fail(new Error('failed ' + (attrs.src || attrs.href))); };
   document.head.append(e);
 });
 for (const s of LEAFLET_SOURCES) {
   if (window.L) break;
   try {
     await loadTag('script', { src: s.js });
-    await loadTag('link', { rel: 'stylesheet', href: s.css }).catch(() => {});
+    await loadTag('link', { rel: 'stylesheet', href: s.css }, 4000).catch(() => {});
   } catch (e) { console.warn(e.message); }
 }
 if (!window.L) {
@@ -376,4 +391,1033 @@ function convexHull(pts) {
   return lower.concat(upper);
 }
 
-/
+// Outline around a set of houses, padded by radiusM so even a single house gets a visible blob.
+function paddedHull(points, radiusM) {
+  const pts = [];
+  for (const p of points) {
+    const dLat = radiusM / 111320, dLng = radiusM / (111320 * Math.cos(p.lat * Math.PI / 180));
+    for (let k = 0; k < 12; k++) {
+      const a = k * Math.PI / 6;
+      pts.push([p.lng + dLng * Math.cos(a), p.lat + dLat * Math.sin(a)]);
+    }
+  }
+  return convexHull(pts).map(([x, y]) => [y, x]);
+}
+
+function findEstateByName(name) {
+  const k = slugify(name);
+  if (!k) return null;
+  for (const [id, e] of estates) if (slugify(e.name) === k) return [id, e];
+  return null;
+}
+
+function refreshEstateList() {
+  const names = [...estates.values()].map(e => e.name).sort((a, b) => a.localeCompare(b));
+  $('estate-list').replaceChildren(...names.map(n => el('option', { value: n })));
+}
+
+// Find the estate called `name` (case-insensitive) or create it. Optionally sets its pickup time. Returns its id.
+function ensureEstate(name, time) {
+  name = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!name) return '';
+  const hit = findEstateByName(name);
+  if (hit) {
+    const [id, e] = hit;
+    if (time && e.time !== time) { e.time = time; store.update(id, { time }); scheduleEstates(); }
+    return id;
+  }
+  const base = 'estate-' + (slugify(name) || 'x');
+  let id = base, n = 2;
+  while (estates.has(id)) id = base + '-' + n++;
+  const e = { type: 'estate', name, time: time || '' };
+  estates.set(id, e);            // optimistic, so the next lookup in this session finds it straight away
+  store.set(id, e);
+  refreshEstateList();
+  return id;
+}
+
+const estateHouses = id => [...items.values()].filter(d => d.type !== 'pile' && d.estate === id);
+
+function estatePopup(id) {
+  const e = estates.get(id);
+  if (!e) return '';
+  const hs = estateHouses(id);
+  const done = hs.filter(d => d.done).length;
+  const box = el('div', { className: 'pop' });
+  box.append(
+    el('div', { className: 'pop-kind', textContent: '🏘 Estate' }),
+    el('div', { className: 'pop-text', textContent: e.name }),
+    el('div', { className: 'pop-meta', textContent:
+      (e.time ? `Pickup ${fmtHM(e.time)}` : 'No pickup time set') + ` · ${done} of ${pl(hs.length, 'house', 'houses')} collected` }),
+    el('button', { className: 'pri', textContent: 'Edit estate', onclick: () => openEstateSheet(id) })
+  );
+  return box;
+}
+
+let estTimer = 0;
+function scheduleEstates() { clearTimeout(estTimer); estTimer = setTimeout(drawEstates, 40); }
+
+function drawEstates() {
+  estateLayer.clearLayers();
+  if (!view.estate) return;
+  const byEstate = new Map();
+  for (const d of items.values()) {
+    if (d.type === 'pile' || !d.estate || !estates.has(d.estate)) continue;
+    if (!byEstate.has(d.estate)) byEstate.set(d.estate, []);
+    byEstate.get(d.estate).push({ lat: d.lat, lng: d.lng, done: !!d.done });
+  }
+  for (const [id, hs] of byEstate) {
+    const e = estates.get(id);
+    const done = hs.filter(h => h.done).length, all = done === hs.length;
+    const colour = all ? '#868e96' : estateColour(id);
+    const hull = paddedHull(hs, 22);
+    const poly = L.polygon(hull, { color: colour, weight: 2, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.08 : 0.16 }).addTo(estateLayer);
+    poly.bindPopup(() => estatePopup(id));
+    // label sits just above the outline's northern edge so it doesn't cover the trees
+    const top = hull.reduce((a, p) => p[0] > a[0] ? p : a, hull[0]);
+    const midLng = hull.reduce((s, p) => s + p[1], 0) / hull.length;
+    const label = el('div', { className: 'elabel' + (all ? ' done' : ''),
+      textContent: e.name + (e.time ? ' · ' + fmtHM(e.time) : '') + ` · ${done}/${hs.length}` + (all ? ' ✔' : '') });
+    label.style.borderColor = colour;
+    L.marker([top[0], midLng], { interactive: false, keyboard: false, zIndexOffset: -500,
+      icon: L.divIcon({ className: '', iconSize: [0, 0], html: label }) }).addTo(estateLayer);
+  }
+}
+
+// Which existing estate does this spot / address text belong to?
+function estateAt(ll, text, nameOnly) {
+  const t = String(text || '').toLowerCase();
+  let best = null;
+  for (const [id, e] of estates) {                       // 1) estate name appears in the typed address
+    const n = e.name.toLowerCase();
+    if (n.length < 3) continue;
+    const re = new RegExp('(^|[^a-z0-9])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[^a-z0-9])');
+    if (re.test(t) && (!best || n.length > best.len)) best = { id, len: n.length, why: 'address' };
+  }
+  if (best || nameOnly) return best;
+  let near = null;                                      // 2) an existing house of an estate is within 60 m
+  for (const d of items.values()) {
+    if (d.type === 'pile' || !d.estate || !estates.has(d.estate)) continue;
+    const m = map.distance(ll, [d.lat, d.lng]);
+    if (m <= 60 && (!near || m < near.m)) near = { id: d.estate, m, why: 'location' };
+  }
+  return near;
+}
+
+/* estate edit sheet */
+let estEditId = null;
+function openEstateSheet(id) {
+  const e = estates.get(id);
+  if (!e) return;
+  closeComposer();
+  map.closePopup();
+  estEditId = id;
+  $('e-name').value = e.name;
+  $('e-time').value = e.time || '';
+  $('e-hint').textContent = '';
+  $('esheet').hidden = false;
+}
+$('e-cancel').onclick = () => { $('esheet').hidden = true; };
+$('e-save').onclick = () => {
+  const id = estEditId, e = estates.get(id);
+  if (!e || !store) return;
+  const name = $('e-name').value.replace(/\s+/g, ' ').trim();
+  if (!name) { $('e-hint').textContent = 'Please enter a name.'; return; }
+  const clash = findEstateByName(name);
+  if (clash && clash[0] !== id) { $('e-hint').textContent = 'Another estate already has that name.'; return; }
+  const time = $('e-time').value;
+  e.name = name; e.time = time;
+  store.update(id, { name, time });
+  refreshEstateList(); scheduleEstates();
+  $('esheet').hidden = true;
+};
+$('e-delete').onclick = () => {
+  const id = estEditId, e = estates.get(id);
+  if (!e || !store) return;
+  if (!confirm(`Delete the estate "${e.name}"? Its houses stay on the map but are no longer grouped.`)) return;
+  for (const [hid, d] of items) if (d.estate === id) store.update(hid, { estate: '' });
+  estates.delete(id);
+  store.remove(id);
+  refreshEstateList(); scheduleEstates();
+  $('esheet').hidden = true;
+};
+
+function applyChanges(changes) {
+  let estatesChanged = false;
+  for (const c of changes) {
+    if (c.type === 'removed') {
+      if (estates.delete(c.id)) { estatesChanged = true; continue; }
+      items.delete(c.id);
+      const m = markers.get(c.id);
+      if (m) { m.remove(); markers.delete(c.id); }
+      continue;
+    }
+    const d = c.data;
+    if (d.type === 'estate') { estates.set(c.id, d); estatesChanged = true; continue; }
+    items.set(c.id, d);
+    let m = markers.get(c.id);
+    if (!m) {
+      m = L.marker([d.lat, d.lng], { icon: iconFor(d) });
+      const id = c.id;
+      m.bindPopup(() => popupFor(id));
+      markers.set(id, m);
+    } else {
+      m.setLatLng([d.lat, d.lng]);
+      m.setIcon(iconFor(d));
+      if (m.isPopupOpen()) m.getPopup().setContent(popupFor(c.id));
+    }
+    m.setZIndexOffset(d.done ? -1000 : 0);
+    setVisible(m, d);
+  }
+  if (estatesChanged) refreshEstateList();
+  scheduleEstates();
+}
+
+function updateStats() {
+  let rT = 0, rN = 0, pT = 0, pN = 0;
+  for (const d of items.values()) {
+    if (d.done) continue;
+    if (d.type === 'pile') { pT += d.trees; pN++; } else { rT += d.trees; rN++; }
+  }
+  $('stat-req').textContent = `To collect: ${pl(rT, 'tree', 'trees')} (${pl(rN, 'address', 'addresses')})`;
+  $('stat-pile').textContent = `Awaiting van: ${pl(pT, 'tree', 'trees')} (${pl(pN, 'pile', 'piles')})`;
+}
+
+/* ---------------- marker popup ---------------- */
+function popupFor(id) {
+  const d = items.get(id);
+  if (!d) return '';
+  const isReq = d.type !== 'pile';
+  const note = d.note ?? (isReq ? '' : d.text) ?? '';
+  const est = isReq && d.estate ? estates.get(d.estate) : null;
+  const box = el('div', { className: 'pop' });
+  box.append(
+    el('div', { className: 'pop-kind', textContent: isReq ? '🌲 Collection request' : '🌲🌲 Pile' }),
+    el('div', { className: 'pop-text', textContent: isReq ? (d.text || '(no address)') : (note || 'Pile') }),
+    est ? el('div', { className: 'pop-note', textContent: '🏘 ' + est.name + (est.time ? ' · pickup ' + fmtHM(est.time) : '') }) : '',
+    isReq && note ? el('div', { className: 'pop-note', textContent: '📝 ' + note }) : '',
+    d.approx ? el('div', { className: 'pop-note', textContent: '📍 Approximate location. Tap Edit and drag the pin onto the house.' }) : '',
+    el('div', {
+      className: 'pop-meta',
+      textContent: pl(d.trees, 'tree', 'trees') + ' · ' +
+        (d.done ? `${isReq ? 'collected' : 'picked up'} ${fmtTime(d.doneAt)}`.trim()
+                : (isReq ? 'waiting for collection' : 'waiting for van'))
+    })
+  );
+  box.append(el('button', {
+    className: 'pri',
+    textContent: d.done ? (isReq ? '↩ Undo collected' : '↩ Undo picked up')
+                        : (isReq ? '✔ Mark collected' : '🚚 Mark picked up'),
+    onclick: () => {
+      const cur = items.get(id); if (!cur || !store) return;
+      store.update(id, { done: !cur.done, doneAt: cur.done ? null : Date.now() });
+      map.closePopup();
+    }
+  }));
+  box.append(el('div', { className: 'links' },
+    el('button', { textContent: 'Edit', onclick: () => openComposer(isReq ? 'request' : 'pile', id) }),
+    el('a', { textContent: 'Directions', target: '_blank', rel: 'noopener',
+      href: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}` }),
+    el('button', { className: 'del', textContent: 'Delete', onclick: () => {
+      if (confirm('Delete this entry completely?')) { store.remove(id); map.closePopup(); }
+    }})
+  ));
+  return box;
+}
+
+/* ---------------- add address / pile (bottom sheet) ---------------- */
+function setHint(t) { $('hint').textContent = t; }
+
+// Y position (px, from the top of the map) of the middle of the part of the map not covered by the sheet
+function visibleCentreY() {
+  const mapTop = $('map').getBoundingClientRect().top;
+  const sheetTop = $('sheet').hidden ? Infinity : $('sheet').getBoundingClientRect().top;
+  const size = map.getSize();
+  const visibleH = Math.min(size.y, sheetTop - mapTop);
+  return visibleH / 2;
+}
+function focusOn(ll, zoom) {
+  map.setView(ll, zoom, { animate: false });
+  map.panBy([0, map.getSize().y / 2 - visibleCentreY()], { animate: false });
+}
+
+function closeComposer() {
+  if (comp) comp.marker.remove();
+  comp = null;
+  $('sheet').hidden = true;
+}
+
+// Pre-fill the estate field from the typed address (estate name mentioned) or from nearby houses.
+function suggestEstate(nameOnly) {
+  if (!comp || comp.mode !== 'request' || comp.estateTouched) return;
+  const hit = estateAt(comp.marker.getLatLng(), $('f-text').value, nameOnly);
+  if (!hit) return;
+  const e = estates.get(hit.id);
+  $('f-estate').value = e.name;
+  $('f-time').value = e.time || '';
+  $('estate-hint').textContent = `Estate suggested from the ${hit.why}. Change it if that's wrong.`;
+}
+
+// mode: 'request' (house) or 'pile'; editId: existing item to edit; prefill: {text, note, trees, estate, time, key}
+function openComposer(mode, editId, prefill) {
+  if (!store) { showBanner("Still connecting to the database. If this doesn't clear in a few seconds, check your internet connection and the Firebase settings in index.html.", true); return; }
+  closeComposer();
+  map.closePopup();
+  $('esheet').hidden = true;
+  const isReq = mode === 'request';
+  const ex = editId ? items.get(editId) : null;
+  const pf = prefill || {};
+  const exEstate = ex && ex.estate ? estates.get(ex.estate) : null;
+  const pfHit = !exEstate && pf.estate ? findEstateByName(pf.estate) : null;
+  $('sheet-title').textContent = ex ? (isReq ? '✏️ Edit address' : '✏️ Edit pile')
+                                    : (isReq ? '🏠 Add an address for collection' : '📦 Add a pile');
+  $('addr-block').hidden = !isReq;
+  $('estate-block').hidden = !isReq;
+  if (isReq && CONFIG.googleKey) loadGoogle().catch(() => {});
+  $('lbl-note').textContent = isReq ? 'Note (optional), e.g. "tree is at the side gate"' : 'Note (optional), e.g. "outside no. 12"';
+  $('f-text').value = ex && isReq ? (ex.text || '') : (pf.text || '');
+  $('f-note').value = ex ? (ex.note ?? (isReq ? '' : ex.text) ?? '') : (pf.note || '');
+  $('f-trees').value = ex ? clampTrees(ex.trees) : clampTrees(pf.trees || 1);
+  $('f-estate').value = exEstate ? exEstate.name : (pf.estate || '');
+  $('f-time').value = exEstate ? (exEstate.time || '') : (pfHit ? (pfHit[1].time || '') : (pf.time || ''));
+  $('estate-hint').textContent = '';
+  $('results').replaceChildren();
+  setHint(ex ? 'Drag the pin if you need to move it.'
+             : isReq ? 'Type the address and tap Search, then drag the pin onto the exact house if needed.'
+                     : 'Getting your location…');
+  $('sheet').hidden = false;
+
+  const size = map.getSize();
+  const start = ex ? L.latLng(ex.lat, ex.lng) : map.containerPointToLatLng([size.x / 2, visibleCentreY()]);
+  const marker = L.marker(start, {
+    draggable: true, zIndexOffset: 5000,
+    icon: L.divIcon({ className: '', html: '<div class="temp-pin">📍</div>', iconSize: [34, 34], iconAnchor: [17, 34] })
+  }).addTo(map);
+  comp = { mode, marker, editId: editId || null, estateTouched: !!ex || !!pf.estate, approx: !!(ex && ex.approx), failKey: pf.key || null };
+  marker.on('dragend', () => {
+    if (!comp || comp.marker !== marker) return;
+    comp.approx = false;               // the user has placed it by hand now
+    suggestEstate();
+  });
+
+  if (ex) { focusOn(start, Math.max(map.getZoom(), 17)); return; }
+
+  if (!isReq) {
+    if (!navigator.geolocation) { setHint('No GPS available. Drag the pin to where the pile is.'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      if (!comp || comp.marker !== marker) return;
+      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      marker.setLatLng(ll); focusOn(ll, 18);
+      setHint('Pin placed at your location. Drag it if it looks off.');
+    }, () => {
+      if (comp && comp.marker === marker) setHint("Couldn't get GPS. Drag the pin to where the pile is.");
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  } else {
+    $('f-text').focus();
+  }
+}
+
+// ---- Google geocoding (only used if CONFIG.googleKey is set) ----
+let googleLib = null;
+function loadGoogle() {
+  if (!CONFIG.googleKey) return null;
+  googleLib ??= new Promise((ok, fail) => {
+    window.__gmReady = ok;
+    window.gm_authFailure = () => showBanner('Google rejected the API key (check it, the enabled APIs and the site restriction). Using the free address search instead.', true);
+    const sc = document.createElement('script');
+    sc.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(CONFIG.googleKey) + '&loading=async&callback=__gmReady&v=weekly';
+    sc.onerror = () => fail(new Error('Google Maps failed to load'));
+    document.head.append(sc);
+  }).then(() => google.maps.importLibrary('geocoding')).catch(e => { googleLib = null; throw e; });
+  return googleLib;
+}
+
+async function geocodeGoogle(q) {
+  const lib = await loadGoogle();
+  const b = map.getBounds();
+  const req = { address: q, bounds: { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() } };
+  const cc = (CONFIG.countryCodes || '').split(',')[0].trim();
+  if (cc) { req.componentRestrictions = { country: cc.toUpperCase() }; req.region = cc.toLowerCase(); }
+  try {
+    await pace(100);
+    const { results } = await new lib.Geocoder().geocode(req);
+    return results.slice(0, 5).map(r => ({
+      label: r.formatted_address,
+      lat: r.geometry.location.lat(),
+      lon: r.geometry.location.lng(),
+      approx: r.geometry.location_type === 'APPROXIMATE' || r.geometry.location_type === 'GEOMETRIC_CENTER'
+    }));
+  } catch (e) {
+    if (e && e.code === 'ZERO_RESULTS') return [];
+    throw e;
+  }
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let paceGate = 0;
+async function pace(gapMs) {            // simple global rate limiter shared by every geocoding request
+  const now = Date.now(), at = Math.max(now, paceGate);
+  paceGate = at + gapMs;
+  if (at > now) await sleep(at - now);
+}
+function searchParams() {
+  const b = map.getBounds();
+  const p = new URLSearchParams({ format: 'jsonv2', limit: '5', addressdetails: '1' });
+  if (CONFIG.countryCodes) p.set('countrycodes', CONFIG.countryCodes);
+  p.set('viewbox', [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(','));
+  return p;
+}
+
+// Address lookup. Irish house numbers and Eircodes are often missing from OpenStreetMap data, so try the
+// full text first, then street-level (house number removed), each on Nominatim and then Photon.
+async function geocodeOnce(q, params) {
+  if (CONFIG.googleKey) {
+    try {
+      const g = await geocodeGoogle(q);
+      if (g.length) return g;
+    } catch (e) { console.warn('Google geocoding failed:', e); }
+  }
+  try {
+    const p = new URLSearchParams(params); p.set('q', q);
+    await pace(1100);   // Nominatim's usage policy: at most about one request per second
+    const r = await fetch('https://nominatim.openstreetmap.org/search?' + p, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const d = await r.json();
+      if (d.length) return d.map(x => ({ label: x.display_name, lat: parseFloat(x.lat), lon: parseFloat(x.lon),
+        approx: !(x.address && x.address.house_number) && !['house', 'building'].includes(x.addresstype) }));
+    }
+  } catch (e) { console.warn('Nominatim failed:', e); }
+  try {
+    const c = map.getCenter();
+    const p = new URLSearchParams({ q, limit: '5', lat: c.lat, lon: c.lng });
+    await pace(300);
+    const r = await fetch('https://photon.komoot.io/api/?' + p, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) {
+      const j = await r.json();
+      const out = j.features.map(f => {
+        const pr = f.properties || {};
+        const street = [pr.housenumber, pr.street].filter(Boolean).join(' ');
+        const label = [pr.name && pr.name !== street ? pr.name : '', street,
+          pr.city || pr.town || pr.village || pr.county, pr.postcode, pr.country].filter(Boolean).join(', ');
+        return { label: label || q, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], approx: !pr.housenumber && pr.type !== 'house' };
+      });
+      if (out.length) return out;
+    }
+  } catch (e) { console.warn('Photon failed:', e); }
+  return [];
+}
+
+async function geocode(q, params) {
+  let results = await geocodeOnce(q, params);
+  if (results.length) return { results, relaxed: false };
+  const stripped = q.replace(/^\s*(?:no\.?\s*)?\d+[a-z]?(?:\s*[-/]\s*\d+)?\s*,?\s*/i, '').trim();
+  if (stripped && stripped !== q) {
+    results = await geocodeOnce(stripped, params);
+    if (results.length) return { results: results.map(r => ({ ...r, approx: true })), relaxed: true };
+  }
+  return { results: [], relaxed: false };
+}
+
+async function doSearch() {
+  if (!comp) return;
+  const q = $('f-text').value.trim();
+  if (!q) return;
+  suggestEstate(true);   // if the typed address names an existing estate
+  const params = searchParams();
+  const list = $('results');
+  list.replaceChildren();
+  setHint('Searching…');
+  try {
+    const { results: data, relaxed } = await geocode(q, params);
+    if (!data.length) { setHint('No match (or no signal). Try just the street and town, or drag the pin onto the house.' + (CONFIG.googleKey ? '' : ' Eircodes are not searchable here.')); return; }
+    const rough = relaxed || data.every(r => r.approx);
+    setHint(rough ? 'Approximate match only (street level). Tap a result, then drag the pin onto the exact house.'
+                  : 'Tap the right result, then drag the pin to fine-tune.');
+    for (const res of data) {
+      const li = el('li');
+      li.append(el('button', { textContent: res.label, onclick: () => {
+        if (!comp) return;
+        const ll = L.latLng(res.lat, res.lon);
+        comp.marker.setLatLng(ll); focusOn(ll, 18);
+        list.replaceChildren();
+        setHint('Pin placed. Drag it onto the exact house if needed.');
+        comp.approx = !!res.approx;
+        suggestEstate();
+      }}));
+      list.append(li);
+    }
+  } catch (e) {
+    setHint("Search failed (no signal?). You can still drag the pin to the house and save.");
+  }
+}
+
+$('btn-address').onclick = () => openComposer('request');
+$('btn-pile').onclick = () => openComposer('pile');
+$('btn-cancel').onclick = closeComposer;
+$('btn-search').onclick = doSearch;
+$('f-text').addEventListener('keydown', e => { if (e.key === 'Enter' && comp && comp.mode === 'request') { e.preventDefault(); doSearch(); } });
+$('t-minus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) - 1); };
+$('t-plus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) + 1); };
+$('f-text').addEventListener('change', () => suggestEstate(true));
+$('f-estate').addEventListener('input', () => {
+  if (comp) comp.estateTouched = true;
+  const typed = $('f-estate').value.trim();
+  const hit = findEstateByName(typed);
+  if (hit) $('f-time').value = hit[1].time || '';
+  $('estate-hint').textContent = hit || !typed ? '' : 'New estate: it will be created when you save.';
+});
+$('btn-save').onclick = () => {
+  if (!comp || !store) return;
+  const isReq = comp.mode === 'request';
+  const text = isReq ? $('f-text').value.trim() : '';
+  if (isReq && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
+  const ll = comp.marker.getLatLng();
+  const data = { text, note: $('f-note').value.trim(), trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng, approx: !!comp.approx };
+  if (isReq) data.estate = ensureEstate($('f-estate').value, $('f-time').value);
+  if (comp.editId) {
+    store.update(comp.editId, data);
+  } else {
+    const box = $(isReq ? 'show-requests' : 'show-piles');  // make sure the new icon is visible
+    if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
+    store.add({ type: comp.mode, ...data, done: false, doneAt: null });
+  }
+  if (comp.failKey) lastFailures = lastFailures.filter(f => f.key !== comp.failKey);
+  closeComposer();
+};
+
+/* ---------------- misc UI ---------------- */
+for (const [key, boxId] of [['request', 'show-requests'], ['pile', 'show-piles'], ['collected', 'show-collected'], ['estate', 'show-estates']]) {
+  $(boxId).onchange = e => {
+    view[key] = e.target.checked;
+    if (key === 'estate') { scheduleEstates(); return; }
+    for (const [id, m] of markers) setVisible(m, items.get(id));
+  };
+}
+
+$('locate').onclick = () => {
+  if (!navigator.geolocation) return alert('Location is not available on this device.');
+  navigator.geolocation.getCurrentPosition(p => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    if (!me) me = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#1971c2', fillOpacity: 1, interactive: false }).addTo(map);
+    else me.setLatLng(ll);
+    map.setView(ll, Math.max(map.getZoom(), 17));
+  }, () => alert('Could not get your location. Check that location access is allowed for this site.'),
+  { enableHighAccuracy: true, timeout: 10000 });
+};
+
+function showBanner(text, isErr, append) {
+  const b = $('banner');
+  b.textContent = (append && !b.hidden ? b.textContent + ' ' : '') + text;
+  if (isErr) b.className = 'err'; else if (!append) b.className = '';
+  b.hidden = false;
+}
+
+function setStatus() {
+  const s = $('status');
+  if (demoMode) { s.textContent = '● Demo'; return; }
+  if (!navigator.onLine) s.textContent = '● Offline – will sync';
+  else if (pending) s.textContent = '● Syncing…';
+  else s.textContent = '● Live';
+}
+window.addEventListener('online', setStatus);
+window.addEventListener('offline', setStatus);
+
+/* ---------------- storage: local demo ---------------- */
+function createLocalStore() {
+  const KEY = 'tree-collection-demo';
+  let data = {}, cb = () => {};
+  try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
+  return {
+    subscribe(f) { cb = f; f(Object.entries(data).map(([id, d]) => ({ type: 'added', id, data: d }))); },
+    add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); },
+    update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
+    set(id, d) { data[id] = { ...data[id], ...d }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
+    remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); }
+  };
+}
+
+/* ---------------- storage: Firebase Firestore ---------------- */
+async function createFirebaseStore() {
+  const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
+  const [{ initializeApp }, fs] = await Promise.all([
+    import(base + 'firebase-app.js'),
+    import(base + 'firebase-firestore.js')
+  ]);
+  const app = initializeApp(CONFIG.firebase);
+  let db;
+  try {
+    // keeps working (and queues changes) when signal drops
+    db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+  } catch (e) { db = fs.getFirestore(app); }
+  const col = fs.collection(db, CONFIG.collection);
+  const onErr = e => { console.error(e); showBanner("Couldn't save: " + (e.code || e.message), true); };
+  return {
+    subscribe(cb) {
+      fs.onSnapshot(col, { includeMetadataChanges: true }, snap => {
+        pending = snap.metadata.hasPendingWrites; setStatus();
+        cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data() })));
+      }, e => { console.error(e); showBanner("Can't read the database: " + (e.code || e.message), true); });
+    },
+    add(d) { fs.addDoc(col, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); },
+    update(id, p) { fs.updateDoc(fs.doc(db, CONFIG.collection, id), p).catch(onErr); },
+    set(id, d) { fs.setDoc(fs.doc(db, CONFIG.collection, id), d, { merge: true }).catch(onErr); },
+    remove(id) { fs.deleteDoc(fs.doc(db, CONFIG.collection, id)).catch(onErr); }
+  };
+}
+
+/* ==== IMPORT HELPERS START (pure functions, no DOM) ==== */
+const slugify = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const normHeader = s => String(s ?? '').toLowerCase().replace(/[_\-./#:()\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+const EIRCODE_RE = /^([ACDEFHKNPRTVWXY]\d{2}|D6W)\s?[0-9ACDEFHKNPRTVWXY]{4}$/i;
+
+function fmtHM(t) {
+  const m = /^(\d{2}):(\d{2})$/.exec(t || '');
+  if (!m) return t || '';
+  const h = +m[1];
+  return `${h % 12 || 12}:${m[2]}${h < 12 ? 'am' : 'pm'}`;
+}
+
+// "10:30", "10.30", "10:30 AM", "10am", "10:00-12:00" -> "HH:MM" (start time), or '' if unreadable
+function parseTime(s) {
+  s = String(s ?? '').trim().toLowerCase();
+  if (!s) return '';
+  let h, mi = 0, ap = '';
+  let m = s.match(/(\d{1,2})\s*[:.h]\s*(\d{2})\s*(am|pm)?/);
+  if (m) { h = +m[1]; mi = +m[2]; ap = m[3] || ''; }
+  else {
+    m = s.match(/\b(\d{1,2})\s*(am|pm)\b/);
+    if (!m) return '';
+    h = +m[1]; ap = m[2];
+  }
+  if (ap === 'pm' && h < 12) h += 12;
+  if (ap === 'am' && h === 12) h = 0;
+  if (h > 23 || mi > 59) return '';
+  return String(h).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+}
+
+// CSV / TSV (tab = pasted from Excel or Google Sheets) -> array of rows
+function parseDelimited(text) {
+  text = String(text).replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0] || '';
+  const count = ch => first.split(ch).length - 1;
+  const d = count('\t') ? '\t' : (count(';') > count(',') ? ';' : ',');
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"' && cell === '') q = true;
+    else if (c === d) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(cell); rows.push(row); row = []; cell = '';
+    } else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+// Header text -> what the column probably holds. First matching rule wins, so order matters.
+const HEADER_RULES = [
+  ['ignore',  /\b(e ?mail|phone|mobile|tel|telephone|fax)\b|timestamp|submitted|\bdate\b|created|updated/],
+  ['lat',     /^(lat|latitude)$/],
+  ['lng',     /^(lng|lon|long|longitude)$/],
+  ['eircode', /\b(eircode|eir code|post ?code|postal code|zip( code)?|routing key)\b/],
+  ['trees',   /\btrees?\b|\bhow many\b|^(qty|quantity|count)$/],
+  ['time',    /\btime\b|^(pick ?up|collection) (slot|window)$/],
+  ['line2',   /^addr(ess)? ?(line )?(2|3|two|three)$/],
+  ['street',  /^(street|street name|road|road name|street address|thoroughfare)$|^addr(ess)? ?(line )?(1|one)$/],
+  ['number',  /^((house|door|unit|apt|apartment|flat|street|address|building) )?(no|number|num|nr|nº)$|^(door|unit|apt|apartment|flat)$/],
+  ['house',   /^(house|house name|building|building name|property name|premises)$/],
+  ['estate',  /\b(estate|development|housing|neighbou?rhood|area|locality|townland|district|scheme)\b/],
+  ['county',  /^(county|co|province|region)$/],
+  ['town',    /^(town|city|town city|town or city|post town|village|municipality|suburb)$/],
+  ['note',    /\b(notes?|comments?|instructions?|remarks?|details|info|directions?|special)\b/],
+  ['address', /\b(address|addr|location|property)\b/],
+  ['ignore',  /\b(name|id|status|paid|contact)\b/]
+];
+
+function detectField(header) {
+  const h = normHeader(header);
+  if (!h) return null;
+  for (const [f, re] of HEADER_RULES) if (re.test(h)) return f;
+  return null;
+}
+
+function colName(j) { let s = ''; for (j++; j > 0; j = Math.floor((j - 1) / 26)) s = String.fromCharCode(65 + (j - 1) % 26) + s; return s; }
+
+// Work out where the header row is and which field each column holds.
+// opts.header: true = first recognised/first row is a header, false = no header row, undefined = guess.
+function analyzeTable(rowsIn, opts = {}) {
+  const rows = rowsIn.map(r => r.map(c => String(c ?? '').trim())).filter(r => r.some(Boolean));
+  let hdr = -1, bestHits = 0;
+  for (let i = 0; i < Math.min(15, rows.length); i++) {
+    const hits = rows[i].filter(c => { const f = detectField(c); return f && f !== 'ignore'; }).length;
+    if (hits > bestHits) { hdr = i; bestHits = hits; }
+  }
+  // Unrecognised titles (no digits anywhere in the first row) still look like a header row.
+  if (hdr < 0 && rows.length > 1 && !rows[0].some(c => /\d/.test(c))) hdr = 0;
+  if (opts.header === true && hdr < 0) hdr = 0;
+  if (opts.header === false) hdr = -1;
+
+  const width = Math.max(0, ...rows.map(r => r.length));
+  const pad = r => r.concat(Array(Math.max(0, width - r.length)).fill(''));
+  const headers = hdr >= 0 ? pad(rows[hdr]) : Array.from({ length: width }, (_, j) => 'Column ' + colName(j));
+  const data = rows.slice(hdr + 1).map(pad);
+
+  const MULTI = new Set(['note', 'line2', 'ignore']);
+  const fields = headers.map(h => (hdr >= 0 && h) ? detectField(h) : null);
+  const seen = new Set();
+  fields.forEach((f, j) => {
+    if (!f || MULTI.has(f)) return;
+    if (seen.has(f)) fields[j] = 'ignore'; else seen.add(f);
+  });
+
+  // Content-based guesses for columns whose title told us nothing.
+  const vals = j => data.slice(0, 60).map(r => r[j]).filter(Boolean);
+  const share = (arr, test) => arr.length ? arr.filter(test).length / arr.length : 0;
+  const inRange = (x, lo, hi) => { const n = parseFloat(String(x).replace(',', '.')); return /[.,]/.test(x) && isFinite(n) && n > lo && n < hi; };
+  for (let j = 0; j < width; j++) {
+    const v = vals(j);
+    if (fields[j] === 'house' && !seen.has('number') && share(v, x => /^\d+[a-z]?$/i.test(x)) >= 0.7) {
+      fields[j] = 'number'; seen.add('number');           // a column titled just "House" that holds numbers
+      continue;
+    }
+    if (fields[j] != null) continue;
+    let f = 'ignore';
+    if (v.length) {
+      if (!seen.has('eircode') && share(v, x => EIRCODE_RE.test(x)) >= 0.6) f = 'eircode';
+      else if (!seen.has('lat') && share(v, x => inRange(x, 51, 56)) >= 0.8) f = 'lat';
+      else if (!seen.has('lng') && share(v, x => inRange(x, -11, -5)) >= 0.8) f = 'lng';
+      else if (!seen.has('address') && !seen.has('street') && share(v, x => /[a-z]/i.test(x) && /\d/.test(x) && x.length >= 8) >= 0.6) f = 'address';
+    }
+    fields[j] = f;
+    if (f !== 'ignore') seen.add(f);
+  }
+  return { hdr, hasHeader: hdr >= 0, headers, fields, data };
+}
+
+// Turn data rows + a column->field mapping into houses ready to geocode.
+function composeRows(data, fields, opts = {}) {
+  const suffix = String(opts.suffix || '').trim();
+  const withSuffix = s => (s && suffix && !s.toLowerCase().includes(suffix.toLowerCase())) ? s + ', ' + suffix : s;
+  const out = [];
+  for (const cells of data) {
+    const get = f => cells.map((c, i) => fields[i] === f ? String(c ?? '').trim() : '').filter(Boolean);
+    const one = f => get(f)[0] || '';
+    const address = one('address'), number = one('number'), house = one('house'), street = one('street');
+    const estate = (one('estate') || opts.defaultEstate || '').replace(/\s+/g, ' ').trim();
+    const town = one('town'), county = one('county'), eircode = one('eircode');
+    const line2 = get('line2').join(', ');
+    const note = get('note').join(' · ');
+
+    const treesCell = one('trees');
+    const tm = treesCell.match(/\d+/);
+    if (tm && +tm[0] === 0) continue;                         // explicit "0 trees": nothing to collect
+    const trees = tm ? Math.min(99, +tm[0]) : 1;
+
+    const lat = parseFloat(one('lat').replace(',', '.')), lng = parseFloat(one('lng').replace(',', '.'));
+    const hasCoords = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+
+    const parts = [];
+    const add = p => {
+      p = String(p || '').trim().replace(/[,\s]+$/, '');
+      if (p && !parts.join(', ').toLowerCase().includes(p.toLowerCase())) parts.push(p);
+    };
+    const base = address || street;
+    add(house);
+    if (number && base) add(/^\d/.test(base) ? base : `${number} ${base}`);
+    else { add(number); add(base); }
+    add(line2); add(estate); add(town); add(county);
+    const addressText = parts.join(', ');
+    let text = addressText;
+    if (eircode) text = (addressText ? addressText + ', ' : '') + eircode.toUpperCase();
+    if (!text && hasCoords) text = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    if (!text) continue;
+
+    const queries = [];
+    if (addressText) queries.push(withSuffix(addressText));
+    if (eircode) queries.push(eircode.toUpperCase());
+    if (estate) queries.push(withSuffix([estate, town, county].filter(Boolean).join(', ')));
+    out.push({
+      text, note, trees, estate,
+      time: parseTime(one('time')),
+      lat: hasCoords ? lat : null, lng: hasCoords ? lng : null,
+      queries: [...new Set(queries)],
+      key: slugify(text)
+    });
+  }
+  return out;
+}
+/* ==== IMPORT HELPERS END ==== */
+
+/* ---------------- spreadsheet import (UI) ---------------- */
+const imp = { tables: [], idx: 0, an: null, header: undefined, rows: [], running: false, cancel: false };
+let lastFailures = [];      // rows that couldn't be located on the map, still to place by hand
+const FIELD_LABELS = [
+  ['ignore', '(ignore this column)'], ['address', 'Full address'], ['number', 'House number'], ['house', 'House name'],
+  ['street', 'Street / road'], ['line2', 'Address line 2'], ['estate', 'Estate / development'], ['town', 'Town / city'],
+  ['county', 'County'], ['eircode', 'Eircode'], ['trees', 'Number of trees'], ['note', 'Note'],
+  ['time', "Pickup time (the estate's)"], ['lat', 'Latitude'], ['lng', 'Longitude']
+];
+
+async function loadXLSX() {
+  if (window.XLSX) return;
+  for (const src of [
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ]) {
+    try { await loadTag('script', { src }); if (window.XLSX) return; } catch (e) { console.warn(e.message); }
+  }
+  throw new Error("couldn't load the Excel reader (offline?). Save the sheet as CSV and upload that instead");
+}
+
+function showImp(step) { for (const s of [1, 2, 3]) $('imp-step' + s).hidden = s !== step; }
+
+function renderFailures(box) {
+  box.replaceChildren();
+  if (!lastFailures.length) return;
+  const ul = el('ul', { className: 'fails' });
+  for (const f of lastFailures) {
+    ul.append(el('li', {},
+      el('span', { textContent: f.text }),
+      el('button', { className: 'sec', textContent: 'Place on map', onclick: () => {
+        $('imp').hidden = true;
+        openComposer('request', null, { text: f.text, trees: f.trees, note: f.note, estate: f.estate, time: f.time, key: f.key });
+      } })));
+  }
+  box.append(
+    el('h3', { textContent: `${pl(lastFailures.length, 'address', 'addresses')} still to place on the map` }),
+    el('div', { className: 'small', textContent: "These couldn't be found automatically. Tap one, search or drag the pin, and save." }),
+    ul,
+    el('button', { className: 'sec', textContent: 'Copy list', style: 'margin-top:8px',
+      onclick: () => navigator.clipboard && navigator.clipboard.writeText(lastFailures.map(f => f.text).join('\n')).catch(() => {}) })
+  );
+}
+
+function openImport() {
+  closeComposer();
+  $('esheet').hidden = true;
+  map.closePopup();
+  $('imp-msg').textContent = '';
+  renderFailures($('imp-pending'));
+  showImp(1);
+  $('imp').hidden = false;
+}
+function closeImport() {
+  if (imp.running) { if (!confirm('Stop the import?')) return; imp.cancel = true; }
+  $('imp').hidden = true;
+}
+
+function loadTables(tables) {
+  tables = tables.filter(t => t.rows.some(r => r.some(c => String(c ?? '').trim())));
+  if (!tables.length) { $('imp-msg').textContent = 'That file looks empty.'; return; }
+  imp.tables = tables;
+  imp.header = undefined;
+  const sel = $('imp-sheet');
+  sel.replaceChildren(...tables.map((t, i) => el('option', { value: i, textContent: `${t.name} (${t.rows.length} rows)` })));
+  let best = 0;
+  tables.forEach((t, i) => { if (t.rows.length > tables[best].rows.length) best = i; });
+  sel.value = best;
+  $('imp-sheetrow').hidden = tables.length < 2;
+  selectSheet(best);
+}
+function selectSheet(i) { imp.idx = i; imp.header = undefined; analyse(); showImp(2); }
+function analyse() {
+  imp.an = analyzeTable(imp.tables[imp.idx].rows, { header: imp.header });
+  $('imp-hasheader').checked = imp.an.hasHeader;
+  renderMapping();
+  renderPreview();
+}
+
+function renderMapping() {
+  const an = imp.an;
+  const tbl = $('imp-map');
+  tbl.replaceChildren(el('tr', {}, el('th', { textContent: 'Column' }), el('th', { textContent: 'Example' }), el('th', { textContent: 'Holds' })));
+  an.headers.forEach((h, j) => {
+    const examples = an.data.map(r => r[j]).filter(Boolean).slice(0, 2).join(' | ');
+    const sel = el('select', { onchange: () => { an.fields[j] = sel.value; renderPreview(); } },
+      ...FIELD_LABELS.map(([v, t]) => el('option', { value: v, textContent: t })));
+    sel.value = an.fields[j] || 'ignore';
+    tbl.append(el('tr', {},
+      el('td', { textContent: h || '(blank)' }),
+      el('td', { className: 'ex', textContent: examples, title: examples }),
+      el('td', {}, sel)));
+  });
+}
+
+function renderPreview() {
+  const rows = composeRows(imp.an.data, imp.an.fields, { suffix: $('imp-suffix').value, defaultEstate: $('imp-defestate').value });
+  const have = new Set([...items.values()].filter(d => d.type !== 'pile').map(d => slugify(d.text || '')));
+  const fresh = rows.filter(r => !have.has(r.key));
+  imp.rows = fresh;
+  const pv = $('imp-preview');
+  pv.replaceChildren();
+  if (!rows.length) {
+    pv.textContent = 'No addresses recognised yet. Use the "Holds" menus above to say which column has the address (or the number and street).';
+    $('imp-go').disabled = true; $('imp-go').textContent = 'Import';
+    return;
+  }
+  const estatesN = new Set(fresh.map(r => r.estate.toLowerCase()).filter(Boolean)).size;
+  const needGeo = fresh.filter(r => r.lat == null).length;
+  const mins = Math.max(1, Math.ceil(needGeo * (CONFIG.googleKey ? 0.4 : 2) / 60));
+  const ul = el('ul');
+  for (const r of fresh.slice(0, 5)) {
+    ul.append(el('li', { textContent: r.text + (r.trees > 1 ? ` · ${r.trees} trees` : '') + (r.estate ? ` · ${r.estate}` : '') + (r.time ? ` · ${fmtHM(r.time)}` : '') }));
+  }
+  pv.append(
+    el('div', { textContent: `${pl(rows.length, 'row', 'rows')} read` +
+      (rows.length > fresh.length ? `, ${rows.length - fresh.length} already on the map (skipped)` : '') +
+      (estatesN ? `, ${pl(estatesN, 'estate', 'estates')}` : '') +
+      (needGeo ? `. Finding them on the map will take about ${pl(mins, 'minute', 'minutes')}.` : '.') }),
+    fresh.length ? el('div', { className: 'small', textContent: 'First rows as they will be imported:' }) : '',
+    ul
+  );
+  $('imp-go').disabled = !fresh.length;
+  $('imp-go').textContent = fresh.length ? `Import ${pl(fresh.length, 'house', 'houses')}` : 'Nothing new to import';
+}
+
+async function handleFile(file) {
+  $('imp-msg').textContent = 'Reading…';
+  try {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (['csv', 'tsv', 'txt'].includes(ext)) {
+      loadTables([{ name: file.name, rows: parseDelimited(await file.text()) }]);
+    } else {
+      await loadXLSX();
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      loadTables(wb.SheetNames.map(n => ({ name: n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }) })));
+    }
+    if (!$('imp-step1').hidden) $('imp-msg').textContent = '';
+  } catch (e) {
+    $('imp-msg').textContent = "Couldn't read that file: " + (e.message || e);
+  }
+}
+
+/* ---- geocoding for bulk rows ---- */
+const geoCache = new Map();
+async function locateRow(row, anchor) {
+  const params = searchParams();
+  for (let i = 0; i < row.queries.length; i++) {
+    const q = row.queries[i], k = q.toLowerCase();
+    let hit = geoCache.get(k);
+    if (hit === undefined) {
+      const { results, relaxed } = await geocode(q, params);
+      const r = results[0];
+      hit = r ? { lat: r.lat, lon: r.lon, approx: !!(relaxed || r.approx) } : null;
+      geoCache.set(k, hit);
+    }
+    if (!hit) continue;
+    const a = anchor();   // ignore matches far from the rest (many Irish street names repeat across counties)
+    if (a && map.distance([a.lat, a.lon], [hit.lat, hit.lon]) > 40000) continue;
+    return { ...hit, approx: hit.approx || i > 0 };   // later queries are only estate/area level
+  }
+  return null;
+}
+
+async function runImport() {
+  const rows = imp.rows.slice();
+  if (!rows.length || imp.running || !store) return;
+  showImp(3);
+  imp.running = true; imp.cancel = false;
+  $('imp-result').replaceChildren();
+  $('imp-stop').hidden = false;
+  const bar = $('imp-bar');
+  bar.max = rows.length; bar.value = 0;
+  const base = [...items.values()].filter(d => d.type !== 'pile').map(d => ({ lat: d.lat, lon: d.lng }));
+  const refs = [], placed = new Map(), failed = [], pts = [];
+  const anchor = () => {
+    const all = base.concat(refs);
+    if (all.length < 3) return null;
+    return { lat: all.reduce((s, p) => s + p.lat, 0) / all.length, lon: all.reduce((s, p) => s + p.lon, 0) / all.length };
+  };
+  if (!view.request) { $('show-requests').checked = true; $('show-requests').onchange({ target: $('show-requests') }); }
+  let added = 0, approxN = 0, done = 0;
+  for (; done < rows.length; done++) {
+    if (imp.cancel) break;
+    const r = rows[done];
+    $('imp-status').textContent = `Placing ${done + 1} of ${rows.length}: ${r.text}`;
+    bar.value = done;
+    const loc = r.lat != null ? { lat: r.lat, lon: r.lng, approx: false } : await locateRow(r, anchor);
+    if (!loc) { failed.push(r); continue; }
+    refs.push(loc);
+    // houses that resolve to the same spot (street/estate-level matches) are fanned out in a small spiral
+    const k = loc.lat.toFixed(4) + ',' + loc.lon.toFixed(4);
+    const n = placed.get(k) || 0;
+    placed.set(k, n + 1);
+    let lat = loc.lat, lng = loc.lon;
+    if (n > 0) {
+      const ang = n * 2.4, rad = 7 * Math.sqrt(n);
+      lat += rad * Math.sin(ang) / 111320;
+      lng += rad * Math.cos(ang) / (111320 * Math.cos(lat * Math.PI / 180));
+    }
+    const estateId = r.estate ? ensureEstate(r.estate, r.time) : '';
+    store.add({ type: 'request', text: r.text, note: r.note, trees: r.trees, lat, lng, estate: estateId, approx: !!loc.approx, done: false, doneAt: null });
+    pts.push([lat, lng]); added++; if (loc.approx) approxN++;
+  }
+  imp.running = false;
+  bar.value = done;
+  $('imp-stop').hidden = true;
+  lastFailures = lastFailures.concat(failed);
+  const left = rows.length - done;
+  $('imp-status').textContent = imp.cancel ? `Stopped after ${done} of ${rows.length}.` : 'Finished.';
+  const out = $('imp-result');
+  out.append(el('p', { textContent: `Added ${pl(added, 'house', 'houses')}.` + (left ? ` ${left} rows were not processed.` : '') }));
+  if (approxN) out.append(el('p', { className: 'small', textContent: `${approxN} placed approximately (street or estate level, shown with a dashed number badge). Tap one and choose Edit to drag it onto the house.` }));
+  const box = el('div');
+  out.append(box);
+  renderFailures(box);
+  if (pts.length) map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+}
+
+$('btn-upload').onclick = openImport;
+$('imp-close').onclick = closeImport;
+$('imp-file').onchange = e => { const f = e.target.files[0]; if (f) handleFile(f); e.target.value = ''; };
+$('imp-parse').onclick = () => {
+  const t = $('imp-paste').value;
+  if (!t.trim()) { $('imp-msg').textContent = 'Paste some cells first.'; return; }
+  loadTables([{ name: 'Pasted cells', rows: parseDelimited(t) }]);
+};
+$('imp-sheet').onchange = e => selectSheet(+e.target.value);
+$('imp-hasheader').onchange = e => { imp.header = e.target.checked; analyse(); };
+$('imp-suffix').oninput = () => { if (imp.an) renderPreview(); };
+$('imp-defestate').oninput = () => { if (imp.an) renderPreview(); };
+$('imp-back').onclick = () => { renderFailures($('imp-pending')); showImp(1); };
+$('imp-go').onclick = runImport;
+$('imp-stop').onclick = () => { imp.cancel = true; $('imp-status').textContent = 'Stopping…'; };
+
+window.__appReady = true;   // every button is wired up from here on
+if (window.__watchdogShown) { $('banner').hidden = true; window.__watchdogShown = false; }
+
+/* ---------------- start ---------------- */
+const isSet = v => v && !String(v).startsWith('PASTE');
+(async () => {
+  if (isSet(CONFIG.firebase.apiKey) && isSet(CONFIG.firebase.projectId)) {
+    try {
+      store = await Promise.race([createFirebaseStore(), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 20000))]);
+    } catch (e) { console.error(e); showBanner("Couldn't connect to Firebase (" + (e.message || e) + "). Check your internet connection and the config in index.html, then reload.", true); return; }
+  } else {
+    demoMode = true;
+    store = createLocalStore();
+    showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+  }
+  setStatus();
+  if (needsKey) showBanner('Map tiles are blocked when opening this file directly: paste a free CARTO key into CONFIG.cartoKey (or host the page online).', true, true);
+  store.subscribe(changes => {
+    applyChanges(changes);
+    updateStats();
+    if (!fitted && items.size && !comp) {
+      fitted = true;
+      const pts = [...items.values()].map(d => [d.lat, d.lng]);
+      map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+    }
+  });
+  updateStats();
+})();
+</script>
+</body>
+</html>
