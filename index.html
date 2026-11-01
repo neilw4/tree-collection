@@ -61,9 +61,9 @@
   .pop .links .del{color:#c92a2a;margin-left:auto}
 
   /* Bottom sheet */
-  #sheet{position:fixed;left:0;right:0;bottom:0;z-index:1200;background:#fff;padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.3);border-radius:14px 14px 0 0}
-  #sheet h2{margin:0 0 8px;font-size:17px}
-  #sheet label{display:block;font-size:13px;color:#555;margin-bottom:3px}
+  #sheet,#esheet{max-height:85vh;overflow:auto;position:fixed;left:0;right:0;bottom:0;z-index:1200;background:#fff;padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.3);border-radius:14px 14px 0 0}
+  #sheet h2,#esheet h2{margin:0 0 8px;font-size:17px}
+  #sheet label,#esheet label{display:block;font-size:13px;color:#555;margin-bottom:3px}
   .row{display:flex;gap:8px;align-items:center;margin-top:8px}
   .row.between{justify-content:space-between}
   input[type=text]{flex:1;min-width:0;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:8px}
@@ -76,7 +76,37 @@
   button.pri,button.sec{padding:11px 14px;font-size:16px;font-weight:600;border-radius:9px;border:0}
   button.pri{background:#0b5d3b;color:#fff}
   button.sec{background:#e9ecef;color:#222}
-  #sheet .actions button{flex:1}
+  #sheet .actions button,#esheet .actions button{flex:1}
+  #estate-hint{display:block;font-size:12px;color:#555;min-height:1em;margin-top:2px}
+  .small{font-size:13px;color:#555}
+
+  /* Estates: shaded outline + label */
+  .elabel{position:absolute;transform:translate(-50%,-100%);margin-top:-3px;white-space:nowrap;background:rgba(255,255,255,.96);border:2px solid #888;border-radius:12px;padding:0 8px;font:700 12px/18px system-ui,sans-serif;color:#222;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  .elabel.done{color:#777;border-style:dashed}
+  .ico.approx .cnt{border-style:dashed}
+
+  /* Upload from a spreadsheet */
+  #bar #btn-upload{flex:.6;background:#495057}
+  .modal{position:fixed;inset:0;z-index:1400;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}
+  .modal[hidden]{display:none}
+  .card{background:#fff;border-radius:14px;padding:16px;width:min(680px,100%);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .card h2{margin:0 0 6px;font-size:18px}
+  .card h3{margin:14px 0 4px;font-size:15px}
+  .card label{display:block;font-size:13px;color:#555;margin:10px 0 3px}
+  .card label.chk{display:flex;align-items:center;gap:6px;color:#222;font-size:14px}
+  .card textarea{width:100%;font:inherit;font-size:14px;padding:8px;border:1px solid #bbb;border-radius:8px}
+  .card input[type=text],.card select{width:100%;padding:8px;font-size:15px;border:1px solid #bbb;border-radius:8px}
+  table.map{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.map th{text-align:left;color:#555;font-weight:600;padding:3px 4px}
+  table.map td{padding:4px;border-top:1px solid #eee;vertical-align:middle}
+  table.map td.ex{color:#666;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  table.map select{padding:6px;font-size:14px}
+  #imp-preview{margin-top:10px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
+  #imp-preview ul{margin:4px 0 0;padding-left:18px}
+  .fails{list-style:none;margin:6px 0 0;padding:0}
+  .fails li{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #eee;padding:5px 0;font-size:13px}
+  .fails button{padding:5px 10px;font-size:13px;border-radius:8px;border:0;white-space:nowrap}
+  progress{width:100%;height:14px}
 </style>
 </head>
 <body>
@@ -95,6 +125,7 @@
     <label><input type="checkbox" id="show-requests" checked> Addresses</label>
     <label><input type="checkbox" id="show-piles" checked> Piles</label>
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
+    <label><input type="checkbox" id="show-estates" checked> Estates</label>
   </div>
 </header>
 
@@ -108,6 +139,7 @@
 <div id="bar">
   <button id="btn-address">+ Address</button>
   <button id="btn-pile">+ Pile</button>
+  <button id="btn-upload" title="Add many houses from a spreadsheet">⬆ Sheet</button>
 </div>
 
 <div id="sheet" hidden>
@@ -122,6 +154,15 @@
   </div>
   <label id="lbl-note" for="f-note" style="margin-top:8px"></label>
   <input id="f-note" type="text" autocomplete="off" style="width:100%">
+  <div id="estate-block">
+    <label for="f-estate" style="margin-top:8px">Estate and pickup time (optional)</label>
+    <div class="row" style="margin-top:0">
+      <input id="f-estate" type="text" list="estate-list" autocomplete="off" placeholder="Pick an estate or type a new one">
+      <input id="f-time" type="time" aria-label="Pickup time" style="width:128px;padding:9px;font-size:16px;border:1px solid #bbb;border-radius:8px">
+    </div>
+    <small id="estate-hint"></small>
+    <datalist id="estate-list"></datalist>
+  </div>
   <div class="row between">
     <span>Number of trees</span>
     <div class="stepper">
@@ -134,6 +175,56 @@
   <div class="row actions">
     <button id="btn-cancel" class="sec">Cancel</button>
     <button id="btn-save" class="pri">Save</button>
+  </div>
+</div>
+
+<div id="esheet" hidden>
+  <h2>🏘 Edit estate</h2>
+  <label for="e-name">Name</label>
+  <input id="e-name" type="text" autocomplete="off" style="width:100%">
+  <div class="row between">
+    <label for="e-time" style="margin:0;font-size:15px;color:#1b1b1b">Pickup time</label>
+    <input id="e-time" type="time" style="padding:9px;font-size:16px;border:1px solid #bbb;border-radius:8px">
+  </div>
+  <p id="e-hint" class="small" style="min-height:1.3em;margin:8px 0 0;color:#c92a2a"></p>
+  <div class="row actions">
+    <button id="e-delete" class="sec">Delete</button>
+    <button id="e-cancel" class="sec">Cancel</button>
+    <button id="e-save" class="pri">Save</button>
+  </div>
+</div>
+
+<div id="imp" class="modal" hidden>
+  <div class="card">
+    <h2>⬆ Add houses from a spreadsheet</h2>
+    <div id="imp-step1">
+      <p class="small">Upload an Excel file (.xlsx, .xls) or a CSV. From Google Sheets use File → Download, or simply copy the cells and paste them below. I'll work out which column is which and you can correct it on the next screen. Names and phone numbers in the sheet are ignored.</p>
+      <input id="imp-file" type="file" accept=".xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt">
+      <label for="imp-paste">…or paste cells here (include the title row)</label>
+      <textarea id="imp-paste" rows="4"></textarea>
+      <div class="row"><button id="imp-parse" class="sec">Read pasted cells</button></div>
+      <p id="imp-msg" class="small" style="color:#c92a2a"></p>
+      <div id="imp-pending"></div>
+    </div>
+    <div id="imp-step2" hidden>
+      <div id="imp-sheetrow" hidden><label for="imp-sheet">Sheet</label><select id="imp-sheet"></select></div>
+      <label class="chk"><input type="checkbox" id="imp-hasheader"> First row has column titles</label>
+      <p class="small">Check what each column holds:</p>
+      <div style="overflow-x:auto"><table id="imp-map" class="map"></table></div>
+      <label for="imp-suffix">Town / county added to every address search (helps find the right place)</label>
+      <input id="imp-suffix" type="text" placeholder="e.g. Navan, Co. Meath">
+      <label for="imp-defestate">Estate for rows that don't have one (optional)</label>
+      <input id="imp-defestate" type="text" list="estate-list" autocomplete="off">
+      <div id="imp-preview"></div>
+      <div class="row actions"><button id="imp-back" class="sec">Back</button><button id="imp-go" class="pri">Import</button></div>
+    </div>
+    <div id="imp-step3" hidden>
+      <progress id="imp-bar" value="0" max="1"></progress>
+      <p id="imp-status" class="small"></p>
+      <div id="imp-result"></div>
+      <div class="row"><button id="imp-stop" class="sec">Stop</button></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button id="imp-close" class="sec">Close</button></div>
   </div>
 </div>
 
@@ -199,6 +290,7 @@ const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString('en-IE', { hour: '2-d
 
 const items = new Map();    // id -> data
 const markers = new Map();  // id -> Leaflet marker
+const estates = new Map();  // id -> {type:'estate', name, time}
 let store = null, demoMode = false, pending = false, fitted = false, comp = null, me = null;
 
 /* ---------------- map ---------------- */
@@ -243,12 +335,12 @@ function iconFor(d) {
   const w = pile ? 56 : 36, h = pile ? 41 : 37;
   return L.divIcon({
     className: '',
-    html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}<span class="cnt">${n}</span></div>`,
+    html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}${d.approx ? ' approx' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}<span class="cnt">${n}</span></div>`,
     iconSize: [w, h], iconAnchor: [w / 2, h - 3], popupAnchor: [0, -(h - 3)]
   });
 }
 
-const view = { request: true, pile: true, collected: true };  // which markers are shown
+const view = { request: true, pile: true, collected: true, estate: true };  // which markers are shown
 
 function setVisible(m, d) {
   const vis = (d.type === 'pile' ? view.pile : view.request) && (view.collected || !d.done);
@@ -256,389 +348,32 @@ function setVisible(m, d) {
   if (!vis && map.hasLayer(m)) m.remove();
 }
 
-function applyChanges(changes) {
-  for (const c of changes) {
-    if (c.type === 'removed') {
-      items.delete(c.id);
-      const m = markers.get(c.id);
-      if (m) { m.remove(); markers.delete(c.id); }
-      continue;
-    }
-    const d = c.data;
-    items.set(c.id, d);
-    let m = markers.get(c.id);
-    if (!m) {
-      m = L.marker([d.lat, d.lng], { icon: iconFor(d) });
-      const id = c.id;
-      m.bindPopup(() => popupFor(id));
-      markers.set(id, m);
-    } else {
-      m.setLatLng([d.lat, d.lng]);
-      m.setIcon(iconFor(d));
-      if (m.isPopupOpen()) m.getPopup().setContent(popupFor(c.id));
-    }
-    m.setZIndexOffset(d.done ? -1000 : 0);
-    setVisible(m, d);
-  }
-}
-
-function updateStats() {
-  let rT = 0, rN = 0, pT = 0, pN = 0;
-  for (const d of items.values()) {
-    if (d.done) continue;
-    if (d.type === 'pile') { pT += d.trees; pN++; } else { rT += d.trees; rN++; }
-  }
-  $('stat-req').textContent = `To collect: ${pl(rT, 'tree', 'trees')} (${pl(rN, 'address', 'addresses')})`;
-  $('stat-pile').textContent = `Awaiting van: ${pl(pT, 'tree', 'trees')} (${pl(pN, 'pile', 'piles')})`;
-}
-
-/* ---------------- marker popup ---------------- */
-function popupFor(id) {
-  const d = items.get(id);
-  if (!d) return '';
-  const isReq = d.type !== 'pile';
-  const note = d.note ?? (isReq ? '' : d.text) ?? '';
-  const box = el('div', { className: 'pop' });
-  box.append(
-    el('div', { className: 'pop-kind', textContent: isReq ? '🌲 Collection request' : '🌲🌲 Pile' }),
-    el('div', { className: 'pop-text', textContent: isReq ? (d.text || '(no address)') : (note || 'Pile') }),
-    isReq && note ? el('div', { className: 'pop-note', textContent: '📝 ' + note }) : '',
-    el('div', {
-      className: 'pop-meta',
-      textContent: pl(d.trees, 'tree', 'trees') + ' · ' +
-        (d.done ? `${isReq ? 'collected' : 'picked up'} ${fmtTime(d.doneAt)}`.trim()
-                : (isReq ? 'waiting for collection' : 'waiting for van'))
-    })
-  );
-  box.append(el('button', {
-    className: 'pri',
-    textContent: d.done ? (isReq ? '↩ Undo collected' : '↩ Undo picked up')
-                        : (isReq ? '✔ Mark collected' : '🚚 Mark picked up'),
-    onclick: () => {
-      const cur = items.get(id); if (!cur || !store) return;
-      store.update(id, { done: !cur.done, doneAt: cur.done ? null : Date.now() });
-      map.closePopup();
-    }
-  }));
-  box.append(el('div', { className: 'links' },
-    el('button', { textContent: 'Edit', onclick: () => openComposer(isReq ? 'request' : 'pile', id) }),
-    el('a', { textContent: 'Directions', target: '_blank', rel: 'noopener',
-      href: `https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}` }),
-    el('button', { className: 'del', textContent: 'Delete', onclick: () => {
-      if (confirm('Delete this entry completely?')) { store.remove(id); map.closePopup(); }
-    }})
-  ));
-  return box;
-}
-
-/* ---------------- add address / pile (bottom sheet) ---------------- */
-function setHint(t) { $('hint').textContent = t; }
-
-// Y position (px, from the top of the map) of the middle of the part of the map not covered by the sheet
-function visibleCentreY() {
-  const mapTop = $('map').getBoundingClientRect().top;
-  const sheetTop = $('sheet').hidden ? Infinity : $('sheet').getBoundingClientRect().top;
-  const size = map.getSize();
-  const visibleH = Math.min(size.y, sheetTop - mapTop);
-  return visibleH / 2;
-}
-function focusOn(ll, zoom) {
-  map.setView(ll, zoom, { animate: false });
-  map.panBy([0, map.getSize().y / 2 - visibleCentreY()], { animate: false });
-}
-
-function closeComposer() {
-  if (comp) comp.marker.remove();
-  comp = null;
-  $('sheet').hidden = true;
-}
-
-function openComposer(mode, editId) {
-  if (!store) return;
-  closeComposer();
-  map.closePopup();
-  const isReq = mode === 'request';
-  const ex = editId ? items.get(editId) : null;
-  $('sheet-title').textContent = ex ? (isReq ? '✏️ Edit address' : '✏️ Edit pile')
-                                    : (isReq ? '🏠 Add an address for collection' : '📦 Add a pile');
-  $('addr-block').hidden = !isReq;
-  if (isReq && CONFIG.googleKey) loadGoogle().catch(() => {});
-  $('lbl-note').textContent = isReq ? 'Note (optional), e.g. "tree is at the side gate"' : 'Note (optional), e.g. "outside no. 12"';
-  $('f-text').value = ex && isReq ? (ex.text || '') : '';
-  $('f-note').value = ex ? (ex.note ?? (isReq ? '' : ex.text) ?? '') : '';
-  $('f-trees').value = ex ? clampTrees(ex.trees) : 1;
-  $('results').replaceChildren();
-  setHint(ex ? 'Drag the pin if you need to move it.'
-             : isReq ? 'Type the address and tap Search, then drag the pin onto the exact house if needed.'
-                     : 'Getting your location…');
-  $('sheet').hidden = false;
-
-  const size = map.getSize();
-  const start = ex ? L.latLng(ex.lat, ex.lng) : map.containerPointToLatLng([size.x / 2, visibleCentreY()]);
-  const marker = L.marker(start, {
-    draggable: true, zIndexOffset: 5000,
-    icon: L.divIcon({ className: '', html: '<div class="temp-pin">📍</div>', iconSize: [34, 34], iconAnchor: [17, 34] })
-  }).addTo(map);
-  comp = { mode, marker, editId: editId || null };
-
-  if (ex) { focusOn(start, Math.max(map.getZoom(), 17)); return; }
-
-  if (!isReq) {
-    if (!navigator.geolocation) { setHint('No GPS available. Drag the pin to where the pile is.'); return; }
-    navigator.geolocation.getCurrentPosition(pos => {
-      if (!comp || comp.marker !== marker) return;
-      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      marker.setLatLng(ll); focusOn(ll, 18);
-      setHint('Pin placed at your location. Drag it if it looks off.');
-    }, () => {
-      if (comp && comp.marker === marker) setHint("Couldn't get GPS. Drag the pin to where the pile is.");
-    }, { enableHighAccuracy: true, timeout: 10000 });
-  } else {
-    $('f-text').focus();
-  }
-}
-
-// ---- Google geocoding (only used if CONFIG.googleKey is set) ----
-let googleLib = null;
-function loadGoogle() {
-  if (!CONFIG.googleKey) return null;
-  googleLib ??= new Promise((ok, fail) => {
-    window.__gmReady = ok;
-    window.gm_authFailure = () => showBanner('Google rejected the API key (check it, the enabled APIs and the site restriction). Using the free address search instead.', true);
-    const sc = document.createElement('script');
-    sc.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(CONFIG.googleKey) + '&loading=async&callback=__gmReady&v=weekly';
-    sc.onerror = () => fail(new Error('Google Maps failed to load'));
-    document.head.append(sc);
-  }).then(() => google.maps.importLibrary('geocoding')).catch(e => { googleLib = null; throw e; });
-  return googleLib;
-}
-
-async function geocodeGoogle(q) {
-  const lib = await loadGoogle();
-  const b = map.getBounds();
-  const req = { address: q, bounds: { west: b.getWest(), east: b.getEast(), north: b.getNorth(), south: b.getSouth() } };
-  const cc = (CONFIG.countryCodes || '').split(',')[0].trim();
-  if (cc) { req.componentRestrictions = { country: cc.toUpperCase() }; req.region = cc.toLowerCase(); }
-  try {
-    const { results } = await new lib.Geocoder().geocode(req);
-    return results.slice(0, 5).map(r => ({
-      label: r.formatted_address,
-      lat: r.geometry.location.lat(),
-      lon: r.geometry.location.lng(),
-      approx: r.geometry.location_type === 'APPROXIMATE' || r.geometry.location_type === 'GEOMETRIC_CENTER'
-    }));
-  } catch (e) {
-    if (e && e.code === 'ZERO_RESULTS') return [];
-    throw e;
-  }
-}
-
-// Address lookup. Irish house numbers and Eircodes are often missing from OpenStreetMap data, so try the
-// full text first, then street-level (house number removed), each on Nominatim and then Photon.
-async function geocodeOnce(q, params) {
-  if (CONFIG.googleKey) {
-    try {
-      const g = await geocodeGoogle(q);
-      if (g.length) return g;
-    } catch (e) { console.warn('Google geocoding failed:', e); }
-  }
-  try {
-    const p = new URLSearchParams(params); p.set('q', q);
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + p, { signal: AbortSignal.timeout(8000) });
-    if (r.ok) {
-      const d = await r.json();
-      if (d.length) return d.map(x => ({ label: x.display_name, lat: parseFloat(x.lat), lon: parseFloat(x.lon) }));
-    }
-  } catch (e) { console.warn('Nominatim failed:', e); }
-  try {
-    const c = map.getCenter();
-    const p = new URLSearchParams({ q, limit: '5', lat: c.lat, lon: c.lng });
-    const r = await fetch('https://photon.komoot.io/api/?' + p, { signal: AbortSignal.timeout(8000) });
-    if (r.ok) {
-      const j = await r.json();
-      const out = j.features.map(f => {
-        const pr = f.properties || {};
-        const street = [pr.housenumber, pr.street].filter(Boolean).join(' ');
-        const label = [pr.name && pr.name !== street ? pr.name : '', street,
-          pr.city || pr.town || pr.village || pr.county, pr.postcode, pr.country].filter(Boolean).join(', ');
-        return { label: label || q, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] };
-      });
-      if (out.length) return out;
-    }
-  } catch (e) { console.warn('Photon failed:', e); }
-  return [];
-}
-
-async function geocode(q, params) {
-  let results = await geocodeOnce(q, params);
-  if (results.length) return { results, relaxed: false };
-  const stripped = q.replace(/^\s*(?:no\.?\s*)?\d+[a-z]?(?:\s*[-/]\s*\d+)?\s*,?\s*/i, '').trim();
-  if (stripped && stripped !== q) {
-    results = await geocodeOnce(stripped, params);
-    if (results.length) return { results, relaxed: true };
-  }
-  return { results: [], relaxed: false };
-}
-
-async function doSearch() {
-  if (!comp) return;
-  const q = $('f-text').value.trim();
-  if (!q) return;
-  const b = map.getBounds();
-  const params = new URLSearchParams({ format: 'jsonv2', limit: '5', q });
-  if (CONFIG.countryCodes) params.set('countrycodes', CONFIG.countryCodes);
-  params.set('viewbox', [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(','));
-  const list = $('results');
-  list.replaceChildren();
-  setHint('Searching…');
-  try {
-    const { results: data, relaxed } = await geocode(q, params);
-    if (!data.length) { setHint('No match (or no signal). Try just the street and town, or drag the pin onto the house.' + (CONFIG.googleKey ? '' : ' Eircodes are not searchable here.')); return; }
-    const rough = relaxed || data.every(r => r.approx);
-    setHint(rough ? 'Approximate match only (street level). Tap a result, then drag the pin onto the exact house.'
-                  : 'Tap the right result, then drag the pin to fine-tune.');
-    for (const res of data) {
-      const li = el('li');
-      li.append(el('button', { textContent: res.label, onclick: () => {
-        if (!comp) return;
-        const ll = L.latLng(res.lat, res.lon);
-        comp.marker.setLatLng(ll); focusOn(ll, 18);
-        list.replaceChildren();
-        setHint('Pin placed. Drag it onto the exact house if needed.');
-      }}));
-      list.append(li);
-    }
-  } catch (e) {
-    setHint("Search failed (no signal?). You can still drag the pin to the house and save.");
-  }
-}
-
-$('btn-address').onclick = () => openComposer('request');
-$('btn-pile').onclick = () => openComposer('pile');
-$('btn-cancel').onclick = closeComposer;
-$('btn-search').onclick = doSearch;
-$('f-text').addEventListener('keydown', e => { if (e.key === 'Enter' && comp && comp.mode === 'request') { e.preventDefault(); doSearch(); } });
-$('t-minus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) - 1); };
-$('t-plus').onclick = () => { $('f-trees').value = clampTrees(parseInt($('f-trees').value, 10) + 1); };
-$('btn-save').onclick = () => {
-  if (!comp || !store) return;
-  const isReq = comp.mode === 'request';
-  const text = isReq ? $('f-text').value.trim() : '';
-  if (isReq && !text) { setHint('Please enter an address.'); $('f-text').focus(); return; }
-  const ll = comp.marker.getLatLng();
-  const data = { text, note: $('f-note').value.trim(), trees: clampTrees($('f-trees').value), lat: ll.lat, lng: ll.lng };
-  if (comp.editId) {
-    store.update(comp.editId, data);
-  } else {
-    const box = $(isReq ? 'show-requests' : 'show-piles');  // make sure the new icon is visible
-    if (!box.checked) { box.checked = true; box.onchange({ target: box }); }
-    store.add({ type: comp.mode, ...data, done: false, doneAt: null });
-  }
-  closeComposer();
+/* ---------------- estates ---------------- */
+// An estate is a document in the same collection as the houses ({type:'estate', name, time}); houses point at it by id.
+const ESTATE_COLOURS = ['#d6336c', '#7048e8', '#1c7ed6', '#f08c00', '#0c8599', '#9c36b5', '#e8590c', '#364fc7'];
+const estateColour = id => {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ESTATE_COLOURS[h % ESTATE_COLOURS.length];
 };
+const estateLayer = L.layerGroup().addTo(map);
 
-/* ---------------- misc UI ---------------- */
-for (const [key, boxId] of [['request', 'show-requests'], ['pile', 'show-piles'], ['collected', 'show-collected']]) {
-  $(boxId).onchange = e => {
-    view[key] = e.target.checked;
-    for (const [id, m] of markers) setVisible(m, items.get(id));
-  };
-}
-
-$('locate').onclick = () => {
-  if (!navigator.geolocation) return alert('Location is not available on this device.');
-  navigator.geolocation.getCurrentPosition(p => {
-    const ll = [p.coords.latitude, p.coords.longitude];
-    if (!me) me = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#1971c2', fillOpacity: 1, interactive: false }).addTo(map);
-    else me.setLatLng(ll);
-    map.setView(ll, Math.max(map.getZoom(), 17));
-  }, () => alert('Could not get your location. Check that location access is allowed for this site.'),
-  { enableHighAccuracy: true, timeout: 10000 });
-};
-
-function showBanner(text, isErr, append) {
-  const b = $('banner');
-  b.textContent = (append && !b.hidden ? b.textContent + ' ' : '') + text;
-  if (isErr) b.className = 'err'; else if (!append) b.className = '';
-  b.hidden = false;
-}
-
-function setStatus() {
-  const s = $('status');
-  if (demoMode) { s.textContent = '● Demo'; return; }
-  if (!navigator.onLine) s.textContent = '● Offline – will sync';
-  else if (pending) s.textContent = '● Syncing…';
-  else s.textContent = '● Live';
-}
-window.addEventListener('online', setStatus);
-window.addEventListener('offline', setStatus);
-
-/* ---------------- storage: local demo ---------------- */
-function createLocalStore() {
-  const KEY = 'tree-collection-demo';
-  let data = {}, cb = () => {};
-  try { data = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
-  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {} };
-  return {
-    subscribe(f) { cb = f; f(Object.entries(data).map(([id, d]) => ({ type: 'added', id, data: d }))); },
-    add(d) { const id = 'l' + Date.now() + Math.random().toString(36).slice(2, 6); data[id] = d; save(); cb([{ type: 'added', id, data: d }]); },
-    update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
-    remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); }
-  };
-}
-
-/* ---------------- storage: Firebase Firestore ---------------- */
-async function createFirebaseStore() {
-  const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
-  const [{ initializeApp }, fs] = await Promise.all([
-    import(base + 'firebase-app.js'),
-    import(base + 'firebase-firestore.js')
-  ]);
-  const app = initializeApp(CONFIG.firebase);
-  let db;
-  try {
-    // keeps working (and queues changes) when signal drops
-    db = fs.initializeFirestore(app, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
-  } catch (e) { db = fs.getFirestore(app); }
-  const col = fs.collection(db, CONFIG.collection);
-  const onErr = e => { console.error(e); showBanner("Couldn't save: " + (e.code || e.message), true); };
-  return {
-    subscribe(cb) {
-      fs.onSnapshot(col, { includeMetadataChanges: true }, snap => {
-        pending = snap.metadata.hasPendingWrites; setStatus();
-        cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data() })));
-      }, e => { console.error(e); showBanner("Can't read the database: " + (e.code || e.message), true); });
-    },
-    add(d) { fs.addDoc(col, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); },
-    update(id, p) { fs.updateDoc(fs.doc(db, CONFIG.collection, id), p).catch(onErr); },
-    remove(id) { fs.deleteDoc(fs.doc(db, CONFIG.collection, id)).catch(onErr); }
-  };
-}
-
-/* ---------------- start ---------------- */
-const isSet = v => v && !String(v).startsWith('PASTE');
-(async () => {
-  if (isSet(CONFIG.firebase.apiKey) && isSet(CONFIG.firebase.projectId)) {
-    try { store = await createFirebaseStore(); }
-    catch (e) { console.error(e); showBanner("Couldn't load Firebase (no signal?). Reload the page to retry.", true); return; }
-  } else {
-    demoMode = true;
-    store = createLocalStore();
-    showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+function convexHull(pts) {
+  const p = pts.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
   }
-  setStatus();
-  if (needsKey) showBanner('Map tiles are blocked when opening this file directly: paste a free CARTO key into CONFIG.cartoKey (or host the page online).', true, true);
-  store.subscribe(changes => {
-    applyChanges(changes);
-    updateStats();
-    if (!fitted && items.size && !comp) {
-      fitted = true;
-      const pts = [...items.values()].map(d => [d.lat, d.lng]);
-      map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
-    }
-  });
-  updateStats();
-})();
-</script>
-</body>
-</html>
+  const upper = [];
+  for (const q of p.slice().reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
+/
