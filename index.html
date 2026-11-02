@@ -92,6 +92,7 @@
   .elabel{position:absolute;transform:translate(-50%,-100%);margin-top:-3px;white-space:nowrap;background:rgba(255,255,255,.96);border:2px solid #888;border-radius:12px;padding:0 8px;font:700 12px/18px system-ui,sans-serif;color:#222;box-shadow:0 1px 3px rgba(0,0,0,.35)}
   .elabel.done{color:#777;border-style:dashed}
   .ico.approx .cnt{border-style:dashed}
+  .ico.approx svg circle{stroke-dasharray:5 3}   /* approximate position: dashed ring (also visible when there's no count badge) */
 
   /* Upload from a spreadsheet */
   #bulk{margin-top:10px;font-size:13px;color:var(--muted)}
@@ -419,7 +420,7 @@ function iconFor(d) {
   const w = pile ? 46 : 38, h = w;
   return L.divIcon({
     className: '',
-    html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}${d.approx ? ' approx' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}<span class="cnt">${n}</span></div>`,
+    html: `<div class="ico ${pile ? 'pile' : 'req'}${d.done ? ' done' : ''}${d.approx ? ' approx' : ''}" style="width:${w}px;height:${h}px">${pile ? PILE_SVG : TREE_SVG}${pile || n > 1 ? `<span class="cnt">${n}</span>` : ''}</div>`,
     iconSize: [w, h], iconAnchor: [w / 2, h / 2], popupAnchor: [0, -(h / 2)]
   });
 }
