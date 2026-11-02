@@ -1197,6 +1197,7 @@ function createLocalStore() {
     update(id, p) { data[id] = { ...data[id], ...p }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
     set(id, d) { data[id] = { ...data[id], ...d }; save(); cb([{ type: 'modified', id, data: data[id] }]); },
     remove(id) { const d = data[id]; delete data[id]; save(); cb([{ type: 'removed', id, data: d }]); },
+    clearAll() { const ids = Object.keys(data); data = {}; save(); cb(ids.map(id => ({ type: 'removed', id }))); },
     isEmpty() { return !Object.values(data).some(d => d.type === 'request' || d.type === 'pile'); }
   };
 }
@@ -1239,9 +1240,28 @@ function clearSample() {
   for (const [id, d] of [...items]) if (d.sample) store.remove(id);
   for (const [id, e] of [...estates]) if (e.sample) { estates.delete(id); hiddenEstates.delete(id); store.remove(id); }
   try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
-  $('banner-actions').replaceChildren();
-  showBanner('Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
+  sampleOn = false; renderDemoActions();
   refreshEstateList(); scheduleEstates();
+}
+let sampleOn = false;   // demo banner currently offers "Clear sample data"
+const DEMO_MSG = 'Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.';
+// (Re)builds the demo banner text and buttons from current state. Demo mode only.
+function renderDemoActions() {
+  if (!demoMode) return;
+  showBanner(sampleOn ? 'Demo mode with sample data around Maynooth: data is stored only on this device. Add your Firebase config to share it between phones.' : DEMO_MSG);
+  const a = $('banner-actions');
+  a.replaceChildren();
+  if (sampleOn) a.append(el('button', { textContent: 'Clear sample data', onclick: () => { if (confirm('Remove the sample addresses, piles and estates?')) clearSample(); } }));
+  a.append(el('button', { textContent: 'Clear all', onclick: clearAll }));
+}
+function clearAll() {
+  if (!demoMode || !confirm('Delete ALL addresses, piles, estates and activity-log entries stored on this device? This cannot be undone.')) return;
+  store.clearAll();
+  hiddenEstates.clear();
+  try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
+  sampleOn = false; renderDemoActions();
+  map.closePopup();
+  refreshEstateList(); scheduleEstates(); updateStats(); renderLog();
 }
 
 /* ---------------- storage: Firebase Firestore ---------------- */
@@ -1761,9 +1781,7 @@ const isSet = v => v && !String(v).startsWith('PASTE');
     try { cleared = !!localStorage.getItem('tree-collection-sample-cleared'); } catch (e) {}
     const seeded = !cleared && store.isEmpty();
     if (seeded) seedSample(store);
-    showBanner(seeded ? 'Demo mode with sample data around Maynooth: data is stored only on this device. Add your Firebase config to share it between phones.'
-                      : 'Demo mode: data is stored only on this device. Add your Firebase config to share it between phones.');
-    if (seeded) $('banner-actions').append(el('button', { textContent: 'Clear sample data', onclick: () => { if (confirm('Remove the sample addresses, piles and estates?')) clearSample(); } }));
+    sampleOn = seeded; renderDemoActions();
   }
   setStatus();
   if (needsKey) showBanner('Map tiles are blocked when opening this file directly: paste a free CARTO key into CONFIG.cartoKey (or host the page online).', true, true);
