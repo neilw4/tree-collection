@@ -9,6 +9,10 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
+## Themes
+- Tap **🎨** in the top bar to pick a theme: Evergreen (default), Frosted, Candy cane, Night shift or Paper map. Each one changes the header, buttons, popups, map tone, badge colours and (for Paper map) the typeface. The choice is remembered on that device.
+- Themes are CSS variables at the bottom of the `<style>` block in `index.html`; copy one of the `:root[data-theme=…]` blocks and add a row to `THEMES` to make your own.
+
 ## Activity log
 - **📜 Log** (top bar) lists what happened, newest first: adds, edits, collected / picked up, undo, deletes and spreadsheet imports, with the time and the name typed in the box at the top of the panel (stored on that device only).
 - Each entry has an **Undo** button: it reverses a collected/picked-up mark or undoes an add, and a delete has **Restore** to bring the entry back. Edits are logged but can't be undone.

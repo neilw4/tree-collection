@@ -8,18 +8,25 @@
 <style>
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
-  body{display:flex;flex-direction:column;font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1b1b1b;background:#fff}
+  body{display:flex;flex-direction:column;font:15px/1.35 var(--font);color:var(--text);background:var(--surface)}
+  input,textarea,select{background:var(--surface);color:var(--text)}
   button,input{font:inherit}
 
-  header{background:#0b5d3b;color:#fff;padding:8px 12px;z-index:1100}
+  header{background:var(--hdr);color:var(--hdr-fg);padding:8px 12px;z-index:1100}
   #status{font-size:12px;white-space:nowrap;margin-left:auto;opacity:.9}
-  .fbtn{background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:14px;padding:2px 10px;font-size:13px}
+  .fbtn{background:rgba(255,255,255,.16);color:var(--hdr-fg);border:1px solid rgba(127,127,127,.7);border-radius:14px;padding:2px 10px;font-size:13px}
   .filters{display:flex;flex-wrap:wrap;align-items:center;gap:4px 16px;margin-top:5px;font-size:13px}
   .filters label{display:flex;align-items:center;gap:5px;white-space:nowrap}
-  .filters input{width:17px;height:17px;margin:0;accent-color:#e8590c}
+  .filters input{width:17px;height:17px;margin:0;accent-color:var(--acc)}
 
   /* Muted, greyscale basemap so the coloured pins stand out (tweak or remove this line to taste) */
-  .leaflet-tile-pane{filter:grayscale(1) contrast(.9) brightness(1.08)}
+  .leaflet-tile-pane{filter:var(--map-filter)}
+  .leaflet-container .leaflet-control-attribution{background:var(--surface);color:var(--muted);opacity:.85}
+  .leaflet-container .leaflet-control-attribution a{color:var(--link)}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface);color:var(--text)}
+  .leaflet-popup-content-wrapper{border-radius:var(--pop-rad);box-shadow:var(--pop-shadow)}
+  .leaflet-popup-content{margin:14px 16px}
+  .leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
   .stats{display:flex;flex-wrap:wrap;gap:2px 16px;margin-top:5px;font-size:13px}
   .chip{display:flex;align-items:center;gap:6px}
   .sw{width:14px;height:14px;border:2px solid #fff;display:inline-block;flex:none}
@@ -32,53 +39,54 @@
 
   #mapwrap{position:relative;flex:1;min-height:0}
   #map{position:absolute;inset:0}
-  #locate{position:absolute;top:84px;right:10px;z-index:900;width:34px;height:34px;border:2px solid rgba(0,0,0,.25);border-radius:4px;background:#fff;font-size:18px;line-height:1;padding:0}
+  #locate{position:absolute;top:84px;right:10px;z-index:900;width:34px;height:34px;border:2px solid rgba(0,0,0,.25);border-radius:4px;background:var(--surface);color:var(--text);font-size:18px;line-height:1;padding:0}
 
-  #bar{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:#f4f4f4;border-top:1px solid #ddd}
-  #bar button{flex:1;padding:14px 8px;font-size:16px;font-weight:600;border:0;border-radius:10px;color:#fff}
-  #btn-address{background:#e8590c}
-  #btn-pile{background:#1c7ed6}
+  #bar{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:var(--bar);border-top:1px solid var(--line)}
+  #bar button{flex:1;padding:14px 8px;font-size:16px;font-weight:600;border:0;border-radius:var(--rad-btn);box-shadow:var(--btn-shadow);text-transform:var(--btn-tt);letter-spacing:var(--btn-ls)}
+  #btn-address{background:var(--acc);color:var(--acc-fg)}
+  #btn-pile{background:var(--acc2);color:var(--acc2-fg)}
 
   /* Map icons: a green tree per house, a stack of trees per pile; greyed out once collected */
   .ico{position:relative;filter:drop-shadow(0 1px 3px rgba(0,0,0,.55))}
   .ico svg{display:block;width:100%;height:100%}
   .ico.done{filter:grayscale(1) drop-shadow(0 1px 1px rgba(0,0,0,.3));opacity:.6}
   .cnt{position:absolute;top:-5px;right:-7px;min-width:20px;height:20px;padding:0 4px;border-radius:10px;background:#fff;border:2px solid #e8590c;color:#1b1b1b;font:700 12px/16px system-ui,sans-serif;text-align:center}
-  .ico.req .cnt{border-color:#40c057}
-  .ico.pile .cnt{border-color:#1b5e20}
+  .ico.req .cnt{border-color:var(--addr-badge)}
+  .ico.pile .cnt{border-color:var(--pile-badge)}
   .hico svg{display:block;height:24px;width:24px}
   .temp-pin{font-size:34px;line-height:34px;text-align:center;filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
 
   /* Popups */
   .pop{min-width:200px}
-  .pop-kind{font-size:12px;color:#666}
+  .pop-kind{font-size:12px;color:var(--muted)}
   .pop-text{font-weight:600;font-size:16px;margin:2px 0}
-  .pop-note{color:#555;font-size:14px;margin-bottom:2px}
-  .pop-meta{color:#444;margin-bottom:8px}
+  .pop-note{color:var(--muted);font-size:14px;margin-bottom:2px}
+  .pop-meta{color:var(--muted);margin-bottom:8px}
   .pop button.pri{width:100%}
+  .pop .pri{box-shadow:var(--btn-shadow)}
   .pop .links{display:flex;gap:14px;margin-top:8px;font-size:13px}
-  .pop .links a,.pop .links button{background:none;border:0;padding:4px 0;color:#1864ab;text-decoration:underline;cursor:pointer}
+  .pop .links a,.pop .links button{background:none;border:0;padding:4px 0;color:var(--link);text-decoration:underline;cursor:pointer}
   .pop .links .del{color:#c92a2a;margin-left:auto}
 
   /* Bottom sheet */
-  #sheet,#esheet{max-height:85vh;overflow:auto;position:fixed;left:0;right:0;bottom:0;z-index:1200;background:#fff;padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.3);border-radius:14px 14px 0 0}
-  #sheet h2,#esheet h2{margin:0 0 8px;font-size:17px}
-  #sheet label,#esheet label{display:block;font-size:13px;color:#555;margin-bottom:3px}
+  #sheet,#esheet{max-height:85vh;overflow:auto;position:fixed;left:0;right:0;bottom:0;z-index:1200;background:var(--surface);color:var(--text);padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -4px 16px rgba(0,0,0,.3);border-radius:var(--sheet-rad) var(--sheet-rad) 0 0}
+  #sheet h2,#esheet h2{margin:0 0 8px;font-size:17px;font-family:var(--font-h)}
+  #sheet label,#esheet label{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
   .row{display:flex;gap:8px;align-items:center;margin-top:8px}
   .row.between{justify-content:space-between}
-  input[type=text]{flex:1;min-width:0;padding:10px;font-size:16px;border:1px solid #bbb;border-radius:8px}
+  input[type=text]{flex:1;min-width:0;padding:10px;font-size:16px;border:1px solid var(--border);border-radius:8px}
   .stepper{display:flex;align-items:center;gap:6px}
-  .stepper button{width:42px;height:42px;font-size:22px;border:1px solid #bbb;background:#fff;border-radius:8px;padding:0}
-  .stepper input{width:56px;height:42px;text-align:center;font-size:18px;border:1px solid #bbb;border-radius:8px}
-  #hint{margin:8px 0 0;font-size:13px;color:#555;min-height:1.3em}
+  .stepper button{width:42px;height:42px;font-size:22px;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:8px;padding:0}
+  .stepper input{width:56px;height:42px;text-align:center;font-size:18px;border:1px solid var(--border);border-radius:8px}
+  #hint{margin:8px 0 0;font-size:13px;color:var(--muted);min-height:1.3em}
   #results{list-style:none;margin:6px 0 0;padding:0;max-height:100px;overflow:auto;border-radius:8px}
-  #results button{width:100%;text-align:left;padding:9px 10px;border:0;border-bottom:1px solid #eee;background:#f6f6f6;font-size:14px}
-  button.pri,button.sec{padding:11px 14px;font-size:16px;font-weight:600;border-radius:9px;border:0}
-  button.pri{background:#0b5d3b;color:#fff}
-  button.sec{background:#e9ecef;color:#222}
+  #results button{width:100%;text-align:left;padding:9px 10px;border:0;border-bottom:1px solid var(--line);background:var(--soft);color:var(--text);font-size:14px}
+  button.pri,button.sec{padding:11px 14px;font-size:16px;font-weight:600;border-radius:var(--rad-btn);border:0}
+  button.pri{background:var(--pri);color:var(--pri-fg)}
+  button.sec{background:var(--soft2);color:var(--text)}
   #sheet .actions button,#esheet .actions button{flex:1}
-  #estate-hint{display:block;font-size:12px;color:#555;min-height:1em;margin-top:2px}
-  .small{font-size:13px;color:#555}
+  #estate-hint{display:block;font-size:12px;color:var(--muted);min-height:1em;margin-top:2px}
+  .small{font-size:13px;color:var(--muted)}
 
   /* Estates: shaded outline + label */
   .elabel{position:absolute;transform:translate(-50%,-100%);margin-top:-3px;white-space:nowrap;background:rgba(255,255,255,.96);border:2px solid #888;border-radius:12px;padding:0 8px;font:700 12px/18px system-ui,sans-serif;color:#222;box-shadow:0 1px 3px rgba(0,0,0,.35)}
@@ -86,49 +94,79 @@
   .ico.approx .cnt{border-style:dashed}
 
   /* Upload from a spreadsheet */
-  #bulk{margin-top:10px;font-size:13px;color:#555}
-  #bulk button{background:none;border:0;padding:4px 0;color:#1864ab;text-decoration:underline;font-size:14px;cursor:pointer}
-  #estpanel,#logpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:#fff;border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
-  #estpanel[hidden],#logpanel[hidden]{display:none}
+  #bulk{margin-top:10px;font-size:13px;color:var(--muted)}
+  #bulk button{background:none;border:0;padding:4px 0;color:var(--link);text-decoration:underline;font-size:14px;cursor:pointer}
+  #estpanel,#logpanel,#themepanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:var(--surface);color:var(--text);border-radius:var(--pop-rad);box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
+  #estpanel[hidden],#logpanel[hidden],#themepanel[hidden]{display:none}
+  #themepanel label{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+  #themepanel .eh{font-weight:600;margin-bottom:4px}
+  #themepanel input{width:18px;height:18px;margin:0}
+  #themepanel .sws{display:flex;flex:none}
+  #themepanel .sws i{width:16px;height:16px;border-radius:50%;border:2px solid #fff;margin-right:-5px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+  #themepanel small{display:block;color:var(--muted);font-size:12px}
   #logpanel{width:min(380px,calc(100% - 16px))}
   #logpanel .eh{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-weight:600}
   #logpanel .eh span{flex:1}
-  #logpanel input{flex:none;width:130px;padding:4px 8px;font-size:13px;border:1px solid #bbb;border-radius:8px}
-  #logpanel .lg{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #eee;font-size:13px}
-  #logpanel .lg .tm{color:#777;flex:none;width:42px}
+  #logpanel input{flex:none;width:130px;padding:4px 8px;font-size:13px;border:1px solid var(--border);border-radius:8px}
+  #logpanel .lg{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+  #logpanel .lg .tm{color:var(--muted);flex:none;width:42px}
   #logpanel .lg .tx{flex:1}
   #logpanel .lg.undone .tx{color:#999;text-decoration:line-through}
-  #logpanel .lg button{padding:3px 9px;font-size:12px;border:1px solid #ccc;background:#f6f6f6;border-radius:10px;flex:none}
+  #logpanel .lg button{padding:3px 9px;font-size:12px;border:1px solid var(--border);background:var(--soft);border-radius:10px;flex:none}
   #estpanel .eh{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-weight:600}
   #estpanel .eh span{flex:1}
-  #estpanel .eh button{padding:3px 9px;font-size:12px;border:1px solid #ccc;background:#f6f6f6;border-radius:10px}
-  #estpanel label{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid #eee;font-size:14px}
+  #estpanel .eh button{padding:3px 9px;font-size:12px;border:1px solid var(--border);background:var(--soft);border-radius:10px}
+  #estpanel label{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
   #estpanel input{width:18px;height:18px;margin:0}
   #estpanel .dot{width:14px;height:14px;border-radius:50%;border:2px solid;flex:none}
   #estpanel .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #estpanel .ct{color:#777;font-size:12px}
+  #estpanel .ct{color:var(--muted);font-size:12px}
   #imp-link{display:flex;gap:8px;margin-top:6px}
   .modal{position:fixed;inset:0;z-index:1400;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px}
   .modal[hidden]{display:none}
-  .card{background:#fff;border-radius:14px;padding:16px;width:min(680px,100%);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+  .card{background:var(--surface);color:var(--text);border-radius:var(--sheet-rad);padding:16px;width:min(680px,100%);box-shadow:0 8px 30px rgba(0,0,0,.4)}
   .card h2{margin:0 0 6px;font-size:18px}
   .card h3{margin:14px 0 4px;font-size:15px}
-  .card label{display:block;font-size:13px;color:#555;margin:10px 0 3px}
-  .card label.chk{display:flex;align-items:center;gap:6px;color:#222;font-size:14px}
-  .card textarea{width:100%;font:inherit;font-size:14px;padding:8px;border:1px solid #bbb;border-radius:8px}
-  .card input[type=text],.card select{width:100%;padding:8px;font-size:15px;border:1px solid #bbb;border-radius:8px}
+  .card label{display:block;font-size:13px;color:var(--muted);margin:10px 0 3px}
+  .card label.chk{display:flex;align-items:center;gap:6px;color:var(--text);font-size:14px}
+  .card textarea{width:100%;font:inherit;font-size:14px;padding:8px;border:1px solid var(--border);border-radius:8px}
+  .card input[type=text],.card select{width:100%;padding:8px;font-size:15px;border:1px solid var(--border);border-radius:8px}
   table.map{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
-  table.map th{text-align:left;color:#555;font-weight:600;padding:3px 4px}
-  table.map td{padding:4px;border-top:1px solid #eee;vertical-align:middle}
-  table.map td.ex{color:#666;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  table.map th{text-align:left;color:var(--muted);font-weight:600;padding:3px 4px}
+  table.map td{padding:4px;border-top:1px solid var(--line);vertical-align:middle}
+  table.map td.ex{color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   table.map select{padding:6px;font-size:14px}
-  #imp-preview{margin-top:10px;font-size:13px;background:#f6f6f6;border-radius:8px;padding:8px}
+  #imp-preview{margin-top:10px;font-size:13px;background:var(--soft);border-radius:8px;padding:8px}
   #imp-preview ul{margin:4px 0 0;padding-left:18px}
   .fails{list-style:none;margin:6px 0 0;padding:0}
-  .fails li{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid #eee;padding:5px 0;font-size:13px}
+  .fails li{display:flex;gap:8px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding:5px 0;font-size:13px}
   .fails button{padding:5px 10px;font-size:13px;border-radius:8px;border:0;white-space:nowrap}
   progress{width:100%;height:14px}
+
+  /* ---- themes (chosen with the 🎨 button; the choice is remembered per device) ---- */
+  :root{--font:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--font-h:inherit;
+    --hdr:#0b5d3b;--hdr-fg:#fff;--acc:#e8590c;--acc-fg:#fff;--acc2:#1c7ed6;--acc2-fg:#fff;--pri:#0b5d3b;--pri-fg:#fff;
+    --surface:#fff;--text:#1b1b1b;--muted:#555;--line:#eee;--soft:#f6f6f6;--soft2:#e9ecef;--border:#bbb;--link:#1864ab;--bar:#f4f4f4;
+    --rad-btn:10px;--pop-rad:12px;--sheet-rad:14px;--btn-shadow:none;--btn-tt:none;--btn-ls:0;--pop-shadow:0 3px 14px rgba(0,0,0,.4);
+    --map-filter:grayscale(1) contrast(.9) brightness(1.08);
+    --addr-badge:#51cf66;--pile-badge:#237a3b;--glyph:#fff;--glyph2:#d3f9d8;--est-op:.4}
+  :root[data-theme=frosted]{--hdr:#1f3a5f;--acc:#339af0;--acc2:#1864ab;--pri:#1f3a5f;--link:#1864ab;--bar:#eaf2fb;--line:#e1ebf6;--soft:#f1f6fb;--soft2:#dde8f4;
+    --rad-btn:14px;--pop-rad:16px;--sheet-rad:20px;--btn-shadow:0 2px 6px rgba(31,58,95,.25);--pop-shadow:0 6px 20px rgba(31,58,95,.35);
+    --map-filter:grayscale(1) sepia(.5) hue-rotate(170deg) saturate(1.3) brightness(1.1);
+    --addr-badge:#74c0fc;--pile-badge:#1864ab;--glyph2:#d0ebff}
+  :root[data-theme=candy]{--hdr:#c92a2a;--acc:#e03131;--acc2:#2b8a3e;--pri:#c92a2a;--link:#c92a2a;--bar:#fff1f1;--line:#fde3e3;--soft:#fff7f7;--soft2:#ffe3e3;--border:#e8b4b4;
+    --rad-btn:999px;--pop-rad:20px;--sheet-rad:22px;--btn-shadow:0 3px 0 rgba(0,0,0,.18);--btn-tt:uppercase;--btn-ls:.04em;
+    --map-filter:grayscale(1) contrast(.85) brightness(1.15);--addr-badge:#fa5252;--pile-badge:#2b8a3e;--glyph2:#ffe3e3}
+  :root[data-theme=night]{--hdr:#14171a;--hdr-fg:#e9ecef;--acc:#a9e34b;--acc-fg:#14171a;--acc2:#fab005;--acc2-fg:#14171a;--pri:#a9e34b;--pri-fg:#14171a;
+    --surface:#1e2227;--text:#e9ecef;--muted:#adb5bd;--line:#343a40;--soft:#2a3036;--soft2:#343a40;--border:#495057;--link:#74c0fc;--bar:#14171a;
+    --rad-btn:8px;--pop-rad:10px;--pop-shadow:0 3px 18px rgba(0,0,0,.8);
+    --map-filter:grayscale(1) invert(1) contrast(.9) brightness(.85);--addr-badge:#a9e34b;--pile-badge:#fab005;--glyph:#14171a;--glyph2:#3b4148;--est-op:.28}
+  :root[data-theme=paper]{--font:Georgia,"Times New Roman",serif;--font-h:Georgia,serif;--hdr:#5f3b1f;--acc:#b5651d;--acc2:#264653;--pri:#5f3b1f;
+    --surface:#fffaf0;--text:#3b2a1a;--muted:#6b5a47;--line:#eadfca;--soft:#f6ecd9;--soft2:#eadfca;--border:#cdb99a;--link:#8a4b12;--bar:#f3e8d2;
+    --rad-btn:6px;--pop-rad:6px;--sheet-rad:8px;--btn-shadow:0 1px 0 rgba(0,0,0,.25);
+    --map-filter:sepia(.75) saturate(.8) contrast(.9) brightness(1.05);--addr-badge:#8ab17d;--pile-badge:#264653;--glyph2:#d8e8d0;--est-op:.34}
 </style>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('tree-collection-theme')||'evergreen'}catch(e){}</script>
 </head>
 <body>
 
@@ -145,6 +183,7 @@
     <label><input type="checkbox" id="show-estates" checked> Outlines</label>
     <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
+    <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme">🎨</button>
     <span id="status"></span>
   </div>
 </header>
@@ -156,6 +195,7 @@
   <button id="locate" title="Where am I?" aria-label="Where am I?">◎</button>
   <div id="estpanel" hidden></div>
   <div id="logpanel" hidden></div>
+  <div id="themepanel" hidden></div>
 </div>
 
 <div id="bar">
@@ -354,13 +394,12 @@ if (CONFIG.cartoKey) {
 
 // Modern round badges: a white tree on a green disc (lighter green = address, darker green = pile of trees).
 const treeGlyph = (cx, cy, k, fill) =>
-  `<g transform="translate(${cx} ${cy}) scale(${k})" fill="${fill}" stroke="${fill}" stroke-width="1.4" stroke-linejoin="round">` +
-  `<path d="M0-9 L5.5-2 H2.6 L7-7.6 Z" fill="none" stroke="none"/>` +
+  `<g transform="translate(${cx} ${cy}) scale(${k})" style="fill:${fill};stroke:${fill}" stroke-width="1.4" stroke-linejoin="round">` +
   `<path d="M0-10 L5-3.5 H2.2 L6.5 2.5 H1.2 V6.5 H-1.2 V2.5 H-6.5 L-2.2-3.5 H-5 Z"/></g>`;
 const badge = (fill, inner) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" fill="${fill}" stroke="#fff" stroke-width="2.6"/>${inner}</svg>`;
-const TREE_SVG = badge('#51cf66', treeGlyph(20, 21, 1.45, '#fff'));
-const PILE_SVG = badge('#237a3b', treeGlyph(12.5, 24, .85, '#d3f9d8') + treeGlyph(27.5, 24, .85, '#d3f9d8') + treeGlyph(20, 19, 1.05, '#fff'));
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="18" style="fill:${fill}" stroke="#fff" stroke-width="2.6"/>${inner}</svg>`;
+const TREE_SVG = badge('var(--addr-badge)', treeGlyph(20, 21, 1.45, 'var(--glyph)'));
+const PILE_SVG = badge('var(--pile-badge)', treeGlyph(12.5, 24, .85, 'var(--glyph2)') + treeGlyph(27.5, 24, .85, 'var(--glyph2)') + treeGlyph(20, 19, 1.05, 'var(--glyph)'));
 $('ico-req').innerHTML = TREE_SVG;
 $('ico-pile').innerHTML = PILE_SVG;
 
@@ -495,6 +534,8 @@ function estatePopup(id) {
 let estTimer = 0;
 function scheduleEstates() { clearTimeout(estTimer); estTimer = setTimeout(() => { drawEstates(); renderEstatePanel(); }, 40); }
 
+const estOpacity = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--est-op')) || 0.4;
+
 function drawEstates() {
   estateLayer.clearLayers();
   if (!view.estate) return;
@@ -510,7 +551,7 @@ function drawEstates() {
     const done = houses.filter(h => h.done).length, all = hs.every(h => h.done);
     const colour = all ? '#adb5bd' : estateColour(id), edge = all ? '#868e96' : estateStroke(id);
     const hull = paddedHull(hs, 22);
-    const poly = L.polygon(hull, { color: edge, weight: 2.5, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.18 : 0.4 }).addTo(estateLayer);
+    const poly = L.polygon(hull, { color: edge, weight: 2.5, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.18 : estOpacity() }).addTo(estateLayer);
     poly.bindPopup(() => estatePopup(id));
     // label sits just above the outline's northern edge so it doesn't cover the trees
     const top = hull.reduce((a, p) => p[0] > a[0] ? p : a, hull[0]);
@@ -590,7 +631,7 @@ function setAllEstates(on) {
 }
 $('btn-estates').onclick = () => {
   const p = $('estpanel');
-  if (p.hidden) closeLog();
+  if (p.hidden) { closeLog(); $('themepanel').hidden = true; }
   p.hidden = !p.hidden;
   $('btn-estates').setAttribute('aria-expanded', String(!p.hidden));
   renderEstatePanel();
@@ -1033,6 +1074,39 @@ function setStatus() {
 window.addEventListener('online', setStatus);
 window.addEventListener('offline', setStatus);
 
+/* ---------------- themes ---------------- */
+const THEME_KEY = 'tree-collection-theme';
+const THEMES = [
+  ['evergreen', 'Evergreen', 'Festive green and orange', ['#0b5d3b', '#e8590c', '#1c7ed6']],
+  ['frosted', 'Frosted', 'Wintry blues, rounded corners', ['#1f3a5f', '#339af0', '#74c0fc']],
+  ['candy', 'Candy cane', 'Red and green, pill buttons', ['#c92a2a', '#e03131', '#2b8a3e']],
+  ['night', 'Night shift', 'Dark mode for evenings', ['#14171a', '#a9e34b', '#fab005']],
+  ['paper', 'Paper map', 'Warm sepia atlas, serif type', ['#5f3b1f', '#b5651d', '#264653']]
+];
+const curTheme = () => document.documentElement.dataset.theme || 'evergreen';
+function setTheme(id) {
+  document.documentElement.dataset.theme = id;
+  try { localStorage.setItem(THEME_KEY, id); } catch (e) {}
+  scheduleEstates();      // estate fill strength depends on the theme
+  renderThemePanel();
+}
+function renderThemePanel() {
+  const p = $('themepanel');
+  if (p.hidden) return;
+  p.replaceChildren(el('div', { className: 'eh', textContent: 'Theme' }), ...THEMES.map(([id, name, desc, cols]) => {
+    const r = el('input', { type: 'radio', name: 'theme', checked: curTheme() === id, onchange: () => setTheme(id) });
+    const sws = el('span', { className: 'sws' }, ...cols.map(c => { const i = el('i'); i.style.background = c; return i; }));
+    return el('label', {}, r, sws, el('span', {}, name, el('small', { textContent: desc })));
+  }));
+}
+$('btn-theme').onclick = () => {
+  const p = $('themepanel');
+  if (p.hidden) { $('estpanel').hidden = true; closeLog(); renderEstatePanel(); }
+  p.hidden = !p.hidden;
+  $('btn-theme').setAttribute('aria-expanded', String(!p.hidden));
+  renderThemePanel();
+};
+
 /* ---------------- activity log ---------------- */
 // Entries are documents in the same collection ({type:'log'}), so everyone sees the same history.
 const NAME_KEY = 'tree-collection-name';
@@ -1095,7 +1169,7 @@ function renderLog() {
 function closeLog() { $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
 $('btn-log').onclick = () => {
   const p = $('logpanel');
-  if (p.hidden) { $('estpanel').hidden = true; renderEstatePanel(); }
+  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; renderEstatePanel(); }
   p.hidden = !p.hidden;
   $('btn-log').setAttribute('aria-expanded', String(!p.hidden));
   renderLog();
