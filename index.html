@@ -1456,28 +1456,36 @@ function composeRows(data, fields, opts = {}) {
     const lat = parseFloat(one('lat').replace(',', '.')), lng = parseFloat(one('lng').replace(',', '.'));
     const hasCoords = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
 
-    const parts = [];
-    const add = p => {
-      p = String(p || '').trim().replace(/[,\s]+$/, '');
-      if (p && !parts.join(', ').toLowerCase().includes(p.toLowerCase())) parts.push(p);
+    // Display text includes the estate; the text we geocode does NOT (estate names are often reused as street names
+    // and confuse the search, e.g. "26 Leinster Wood" in estate "Leinster Wood, Temple Wood").
+    const build = withEstate => {
+      const parts = [];
+      const add = p => {
+        p = String(p || '').trim().replace(/[,\s]+$/, '');
+        if (p && !parts.join(', ').toLowerCase().includes(p.toLowerCase())) parts.push(p);
+      };
+      const base = address || street;
+      add(house);
+      if (number && base) add(/^\d/.test(base) ? base : `${number} ${base}`);
+      else { add(number); add(base); }
+      add(line2); if (withEstate) add(estate); add(town); add(county);
+      return parts.join(', ');
     };
-    const base = address || street;
-    add(house);
-    if (number && base) add(/^\d/.test(base) ? base : `${number} ${base}`);
-    else { add(number); add(base); }
-    add(line2); add(estate); add(town); add(county);
-    const addressText = parts.join(', ');
+    const addressText = build(true);
+    const geoText = build(false);
+    const streetLevel = !!(address || street || number || house || line2);   // is there anything but town/county to search for?
     let text = addressText;
     if (eircode) text = (addressText ? addressText + ', ' : '') + eircode.toUpperCase();
     if (!text && hasCoords) text = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
     if (!text) continue;
 
     const queries = [];
-    if (addressText) queries.push(withSuffix(addressText));
+    if (streetLevel && geoText) queries.push(withSuffix(geoText));
     if (eircode) queries.push(eircode.toUpperCase());
     if (estate) queries.push(withSuffix([estate, town, county].filter(Boolean).join(', ')));
     out.push({
       text, note, trees, estate,
+      estateOnly: !streetLevel && !eircode && !!estate,   // only the estate is known, so any match is approximate
       time: parseTime(one('time')),
       lat: hasCoords ? lat : null, lng: hasCoords ? lng : null,
       queries: [...new Set(queries)],
@@ -1685,7 +1693,7 @@ async function locateRow(row, anchor) {
     if (!hit) continue;
     const a = anchor();   // ignore matches far from the rest (many Irish street names repeat across counties)
     if (a && map.distance([a.lat, a.lon], [hit.lat, hit.lon]) > 40000) continue;
-    return { ...hit, approx: hit.approx || i > 0 };   // later queries are only estate/area level
+    return { ...hit, approx: hit.approx || i > 0 || !!row.estateOnly };   // later queries are only estate/area level
   }
   return null;
 }
