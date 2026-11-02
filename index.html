@@ -544,6 +544,7 @@ function estatePopup(id) {
 let estTimer = 0;
 function scheduleEstates() { clearTimeout(estTimer); estTimer = setTimeout(() => { drawEstates(); renderEstatePanel(); }, 40); }
 
+const ESTATE_BUFFER_M = 100;   // outline sits this far (metres) outside the outermost houses/piles
 const estOpacity = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--est-op')) || 0.4;
 
 function drawEstates() {
@@ -560,7 +561,7 @@ function drawEstates() {
     const houses = hs.filter(h => !h.pile), piles = hs.filter(h => h.pile);
     const done = houses.filter(h => h.done).length, all = hs.every(h => h.done);
     const colour = all ? '#adb5bd' : estateColour(id), edge = all ? '#868e96' : estateStroke(id);
-    const hull = paddedHull(hs, 22);
+    const hull = paddedHull(hs, ESTATE_BUFFER_M);
     const poly = L.polygon(hull, { color: edge, weight: 2.5, dashArray: all ? '5 5' : null, fillColor: colour, fillOpacity: all ? 0.18 : estOpacity() }).addTo(estateLayer);
     poly.bindPopup(() => estatePopup(id));
     // label sits just above the outline's northern edge so it doesn't cover the trees
