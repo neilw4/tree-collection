@@ -9,6 +9,14 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
+## Google key (kept out of GitHub)
+Google address search is much better for Irish addresses. The key must never be committed, so `index.html` has none in it. It is read from, in this order:
+1. `config.local.js` next to `index.html` (listed in `.gitignore`, so git ignores it). Create it for local use with: `window.LOCAL_CONFIG = { googleKey: "YOUR_KEY" };`
+2. The key remembered in the browser: open the page once as `https://…/tree-collection/#gkey=YOUR_KEY`. It is saved on that device and removed from the address bar. Handy for one phone or a quick test.
+3. On GitHub Pages: `.github/workflows/pages.yml` creates `config.local.js` at deploy time from a repository secret named `GOOGLE_MAPS_KEY`, so every volunteer gets it automatically and it is never in the repository. One-time setup: Settings → Pages → Source: **GitHub Actions**; Settings → Secrets and variables → Actions → New repository secret `GOOGLE_MAPS_KEY`.
+
+A key in a web page can always be read by anyone who opens that page, so also restrict it in Google Cloud Console → Credentials: *Website restrictions* `https://neilw4.github.io/*`, and *API restrictions* to Geocoding API and Maps JavaScript API. Set a small daily quota or budget alert.
+
 ## Themes
 - Tap **🎨** in the top bar to pick a theme: Evergreen (default), Frosted, Candy cane, Night shift or Paper map. Each one changes the header, buttons, popups, map tone, badge colours and (for Paper map) the typeface. The choice is remembered on that device.
 - Themes are CSS variables at the bottom of the `<style>` block in `index.html`; copy one of the `:root[data-theme=…]` blocks and add a row to `THEMES` to make your own.

@@ -276,7 +276,7 @@
       <p class="small">Check what each column holds:</p>
       <div style="overflow-x:auto"><table id="imp-map" class="map"></table></div>
       <label for="imp-suffix">Town / county added to every address search (helps find the right place)</label>
-      <input id="imp-suffix" type="text" placeholder="e.g. Navan, Co. Meath">
+      <input id="imp-suffix" type="text" value="Maynooth, Co. Kildare, Ireland" placeholder="e.g. Maynooth, Co. Kildare, Ireland">
       <label for="imp-defestate">Estate for rows that don't have one (optional)</label>
       <input id="imp-defestate" type="text" list="estate-list" autocomplete="off">
       <div id="imp-preview"></div>
@@ -305,7 +305,16 @@
   }, 12000);
 })();
 </script>
+<script src="config.local.js" onerror="this.remove()"></script>
 <script type="module">
+// Key kept out of git: open the page once with #gkey=YOUR_KEY on the end and it is remembered on this device only.
+function storedGoogleKey() {
+  try {
+    const m = /[#&]gkey=([\w-]+)/.exec(location.hash || '');
+    if (m) { localStorage.setItem('tree-collection-gkey', m[1]); history.replaceState(null, '', location.pathname + location.search); }
+    return localStorage.getItem('tree-collection-gkey') || '';
+  } catch (e) { return ''; }
+}
 /* ---------------- load Leaflet (with fallback CDNs) ---------------- */
 const LEAFLET_SOURCES = [
   { js: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', css: 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' },
@@ -353,7 +362,8 @@ const CONFIG = {
   cartoKey: "",
   // Optional: Google Maps API key for better address search (needs the "Maps JavaScript API" and
   // "Geocoding API" enabled; restrict the key to your site's address). Leave "" to use free OpenStreetMap-based search.
-  googleKey: "",
+  // Never put the key in this file. It is read from config.local.js (not in git), or from the link: see README "Google key".
+  googleKey: (window.LOCAL_CONFIG && window.LOCAL_CONFIG.googleKey) || storedGoogleKey(),
   startCenter: [53.3816, -6.5910],  // where the map opens (Maynooth) – change to your area
   startZoom: 15,
   countryCodes: "ie",               // limit address search to this country ("" = worldwide)
@@ -1400,7 +1410,14 @@ function analyzeTable(rowsIn, opts = {}) {
 // Turn data rows + a column->field mapping into houses ready to geocode.
 function composeRows(data, fields, opts = {}) {
   const suffix = String(opts.suffix || '').trim();
-  const withSuffix = s => (s && suffix && !s.toLowerCase().includes(suffix.toLowerCase())) ? s + ', ' + suffix : s;
+  // append only the parts of the suffix (e.g. "Maynooth, Co. Kildare, Ireland") that the address doesn't already contain
+  const sufParts = String(suffix || '').split(',').map(x => x.trim()).filter(Boolean);
+  const withSuffix = s => {
+    if (!s) return s;
+    const low = s.toLowerCase();
+    const add = sufParts.filter(p => !low.includes(p.toLowerCase()));
+    return add.length ? s + ', ' + add.join(', ') : s;
+  };
   const out = [];
   for (const cells of data) {
     const get = f => cells.map((c, i) => fields[i] === f ? String(c ?? '').trim() : '').filter(Boolean);

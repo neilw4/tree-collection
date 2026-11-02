@@ -1,0 +1,40 @@
+# Publishes the site to GitHub Pages and injects the Google Maps key from a repository secret,
+# so the key is never stored in the repository itself.
+# One-time setup: Settings > Pages > Source: "GitHub Actions"; Settings > Secrets and variables > Actions > New secret: GOOGLE_MAPS_KEY
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site folder (leaves out sample data and repo files)
+        env:
+          GOOGLE_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_KEY }}
+        run: |
+          mkdir site
+          cp index.html site/
+          if [ -n "$GOOGLE_MAPS_KEY" ]; then
+            printf 'window.LOCAL_CONFIG = { googleKey: "%s" };\n' "$GOOGLE_MAPS_KEY" > site/config.local.js
+          else
+            echo "// no key set" > site/config.local.js
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
