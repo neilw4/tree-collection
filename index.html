@@ -97,8 +97,13 @@
   /* Upload from a spreadsheet */
   #bulk{margin-top:10px;font-size:13px;color:var(--muted)}
   #bulk button{background:none;border:0;padding:4px 0;color:var(--link);text-decoration:underline;font-size:14px;cursor:pointer}
-  #estpanel,#logpanel,#themepanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:var(--surface);color:var(--text);border-radius:var(--pop-rad);box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
-  #estpanel[hidden],#logpanel[hidden],#themepanel[hidden]{display:none}
+  #estpanel,#logpanel,#themepanel,#lockpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:var(--surface);color:var(--text);border-radius:var(--pop-rad);box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
+  #estpanel[hidden],#logpanel[hidden],#themepanel[hidden],#lockpanel[hidden]{display:none}
+  #lockpanel button{display:block;width:100%;margin:6px 0 0;padding:9px 12px;font-size:14px}
+  #lock{z-index:1600;align-items:center;background:var(--bar)}
+  #lock .card{width:min(360px,100%)}
+  #lock input{width:100%;box-sizing:border-box;padding:11px;font-size:17px;border:1px solid var(--border);border-radius:8px;margin:8px 0 4px}
+  #lock button{width:100%;margin-top:8px}
   #themepanel label{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
   #themepanel .eh{font-weight:600;margin-bottom:4px}
   #themepanel input{width:18px;height:18px;margin:0}
@@ -185,6 +190,7 @@
     <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
     <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme">🎨</button>
+    <button class="fbtn" id="btn-lock" aria-label="Password and sign out" hidden>🔒</button>
     <span id="status"></span>
   </div>
 </header>
@@ -197,6 +203,8 @@
   <div id="estpanel" hidden></div>
   <div id="logpanel" hidden></div>
   <div id="themepanel" hidden></div>
+  <div id="lockpanel" hidden><div class="eh" style="font-weight:600">Shared password</div>
+    <button class="sec" id="lk-change">Change password…</button><button class="sec" id="lk-out">Sign out of this device</button></div>
 </div>
 
 <div id="bar">
@@ -257,6 +265,17 @@
   </div>
 </div>
 
+<div id="lock" class="modal" hidden>
+  <div class="card">
+    <h2>🎄 Tree collection</h2>
+    <p class="small">Enter the shared password to open the map.</p>
+    <form id="lock-form" autocomplete="on">
+      <input id="lock-pw" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password">
+      <div id="lock-msg" class="small" role="alert"></div>
+      <button class="pri" id="lock-go" type="submit">Unlock</button>
+    </form>
+  </div>
+</div>
 <div id="imp" class="modal" hidden>
   <div class="card">
     <h2>⬆ Add houses from a spreadsheet</h2>
@@ -363,6 +382,9 @@ const CONFIG = {
   cartoKey: "",
   // Optional: Google Maps API key for better address search (needs the "Maps JavaScript API" and
   // "Geocoding API" enabled; restrict the key to your site's address). Leave "" to use free OpenStreetMap-based search.
+  // Shared sign-in for the Firebase data. This is only the account's e-mail (not a secret); the password is never stored in this
+  // repository: Firebase keeps a salted hash of it. Create this user in Firebase Console > Authentication (see README "Password").
+  sharedEmail: "collectors@example.com",
   // Never put the key in this file. It is read from config.local.js (not in git), or from the link: see README "Google key".
   googleKey: (window.LOCAL_CONFIG && window.LOCAL_CONFIG.googleKey) || storedGoogleKey(),
   startCenter: [53.3816, -6.5910],  // where the map opens (Maynooth) – change to your area
@@ -382,6 +404,7 @@ const items = new Map();    // id -> data
 const markers = new Map();  // id -> Leaflet marker
 const estates = new Map();  // id -> {type:'estate', name, time}
 const logs = new Map();     // id -> {type:'log', ts, who, action, targetId, label, snapshot?, undone?}
+let fbAuth = null;   // {api, auth} when Firebase is in use
 let store = null, demoMode = false, pending = false, fitted = false, comp = null, me = null;
 
 /* ---------------- map ---------------- */
@@ -1178,10 +1201,10 @@ function renderLog() {
   });
   p.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'Nothing yet. Adds, collections, pickups, edits and deletes show up here, with an Undo button.' })]));
 }
-function closeLog() { $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
+function closeLog() { $('lockpanel').hidden = true; $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
 $('btn-log').onclick = () => {
   const p = $('logpanel');
-  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; renderEstatePanel(); }
+  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; $('lockpanel').hidden = true; renderEstatePanel(); }
   p.hidden = !p.hidden;
   $('btn-log').setAttribute('aria-expanded', String(!p.hidden));
   renderLog();
@@ -1269,11 +1292,13 @@ function clearAll() {
 /* ---------------- storage: Firebase Firestore ---------------- */
 async function createFirebaseStore() {
   const base = 'https://www.gstatic.com/firebasejs/10.14.1/';
-  const [{ initializeApp }, fs] = await Promise.all([
+  const [{ initializeApp }, fs, authApi] = await Promise.all([
     import(base + 'firebase-app.js'),
-    import(base + 'firebase-firestore.js')
+    import(base + 'firebase-firestore.js'),
+    import(base + 'firebase-auth.js')
   ]);
   const app = initializeApp(CONFIG.firebase);
+  fbAuth = { api: authApi, auth: authApi.getAuth(app) };
   let db;
   try {
     // keeps working (and queues changes) when signal drops
@@ -1286,7 +1311,12 @@ async function createFirebaseStore() {
       fs.onSnapshot(col, { includeMetadataChanges: true }, snap => {
         pending = snap.metadata.hasPendingWrites; setStatus();
         cb(snap.docChanges().map(c => ({ type: c.type, id: c.doc.id, data: c.doc.data() })));
-      }, e => { console.error(e); showBanner("Can't read the database: " + (e.code || e.message), true); });
+      }, e => {
+        console.error(e);
+        showBanner(e.code === 'permission-denied'
+          ? "Not allowed to read the database. If the shared password was changed, tap 🔒 → Sign out, then sign in again. (Also check the Firestore rules.)"
+          : "Can't read the database: " + (e.code || e.message), true);
+      });
     },
     add(d) { const ref = fs.doc(col); fs.setDoc(ref, { ...d, createdAt: fs.serverTimestamp() }).catch(onErr); return ref.id; },
     update(id, p) { fs.updateDoc(fs.doc(db, CONFIG.collection, id), p).catch(onErr); },
@@ -1777,6 +1807,67 @@ $('imp-stop').onclick = () => { imp.cancel = true; $('imp-status').textContent =
 window.__appReady = true;   // every button is wired up from here on
 if (window.__watchdogShown) { $('banner').hidden = true; window.__watchdogShown = false; }
 
+/* ---------------- shared password (Firebase Authentication) ---------------- */
+// The password is checked by Firebase, which stores only a salted hash; the Firestore rules then let in only this one
+// account. Nothing about the password is in this file or in git.
+function authMsg(e) {
+  switch (e && e.code) {
+    case 'auth/invalid-credential': case 'auth/wrong-password': case 'auth/invalid-login-credentials': return 'Wrong password.';
+    case 'auth/user-not-found': return 'The shared account has not been created yet. See the README, "Password".';
+    case 'auth/too-many-requests': return 'Too many attempts. Wait a few minutes and try again.';
+    case 'auth/network-request-failed': return 'No signal. Check your connection and try again.';
+    case 'auth/operation-not-allowed': return 'Email/Password sign-in is not switched on in Firebase (Authentication > Sign-in method).';
+    case 'auth/weak-password': return 'That password is too weak.';
+    default: return 'Could not sign in: ' + ((e && (e.code || e.message)) || e);
+  }
+}
+function promptLogin() {
+  const { api, auth } = fbAuth;
+  return new Promise(resolve => {
+    const box = $('lock'), pw = $('lock-pw'), msg = $('lock-msg'), go = $('lock-go');
+    box.hidden = false; pw.value = ''; msg.textContent = '';
+    setTimeout(() => pw.focus(), 50);
+    $('lock-form').onsubmit = async ev => {
+      ev.preventDefault();
+      if (!pw.value) return;
+      go.disabled = true; msg.textContent = 'Checking…';
+      try {
+        const cred = await api.signInWithEmailAndPassword(auth, CONFIG.sharedEmail, pw.value);
+        pw.value = ''; box.hidden = true; go.disabled = false;
+        resolve(cred.user);
+      } catch (e) { msg.textContent = authMsg(e); go.disabled = false; pw.select(); }
+    };
+  });
+}
+async function ensureSignedIn() {
+  if (!fbAuth) return;
+  const { api, auth } = fbAuth;
+  let user = await new Promise(res => { const off = api.onAuthStateChanged(auth, u => { off(); res(u); }); });
+  if (user && user.email !== CONFIG.sharedEmail) { await api.signOut(auth); user = null; }
+  if (!user) await promptLogin();
+  $('btn-lock').hidden = false;
+}
+async function changePassword() {
+  const { api, auth } = fbAuth, u = auth.currentUser;
+  if (!u) return;
+  const cur = prompt('Current shared password:'); if (cur == null) return;
+  const next = prompt('New shared password (at least 8 characters):'); if (next == null) return;
+  if (next.length < 8) { alert('That is too short: use at least 8 characters. Nothing was changed.'); return; }
+  if (prompt('Type the new password again:') !== next) { alert("Those didn't match. Nothing was changed."); return; }
+  try {
+    await api.reauthenticateWithCredential(u, api.EmailAuthProvider.credential(CONFIG.sharedEmail, cur));
+    await api.updatePassword(u, next);
+    alert('Password changed. Phones that are already signed in stay signed in until they sign out, so tell volunteers the new password.');
+  } catch (e) { alert(authMsg(e)); }
+}
+$('btn-lock').onclick = () => {
+  const p = $('lockpanel');
+  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; closeLog(); renderEstatePanel(); }
+  p.hidden = !p.hidden;
+};
+$('lk-change').onclick = () => { $('lockpanel').hidden = true; changePassword(); };
+$('lk-out').onclick = async () => { if (fbAuth) { await fbAuth.api.signOut(fbAuth.auth); location.reload(); } };
+
 /* ---------------- start ---------------- */
 const isSet = v => v && !String(v).startsWith('PASTE');
 (async () => {
@@ -1784,6 +1875,7 @@ const isSet = v => v && !String(v).startsWith('PASTE');
     try {
       store = await Promise.race([createFirebaseStore(), new Promise((_, no) => setTimeout(() => no(new Error('timed out')), 20000))]);
     } catch (e) { console.error(e); showBanner("Couldn't connect to Firebase (" + (e.message || e) + "). Check your internet connection and the config in index.html, then reload.", true); return; }
+    await ensureSignedIn();      // shows the password box until the shared password is right
   } else {
     demoMode = true;
     store = createLocalStore();

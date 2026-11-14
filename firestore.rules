@@ -1,10 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Open read/write until the date below, then locked automatically.
-    // Set the date to a few days after your collection day.
+    // Only the one shared account (created in Firebase Console > Authentication, e-mail below, same as
+    // CONFIG.sharedEmail in index.html) can read or write. The password itself lives only in Firebase (hashed).
+    function isCollector() {
+      return request.auth != null && request.auth.token.email == 'collectors@example.com';
+    }
+    // The date is a safety net: everything locks automatically after it. Set it to a few days after collection day.
     match /items/{id} {
-      allow read, write: if request.time < timestamp.date(2027, 1, 31);
+      allow read, write: if isCollector() && request.time < timestamp.date(2027, 1, 31);
     }
   }
 }

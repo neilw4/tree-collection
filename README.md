@@ -9,6 +9,15 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
+## Password
+When Firebase is connected the app asks for a shared password before showing anything. It is real protection, not just a screen in front of the page: Firebase Authentication checks the password (it stores only a salted hash) and `firestore.rules` only allows that one account to read or write. A password hash inside `index.html` would NOT be secure, because anyone could read the page, copy the Firebase settings and talk to the database directly. Because of this, the password is never in this repository.
+One-time setup in the Firebase console:
+1. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable** (leave "Email link" off).
+2. **Authentication → Users → Add user.** Use the e-mail from `CONFIG.sharedEmail` in `index.html` (default `collectors@example.com`, it never receives mail) and the shared password you want. Add this user *before* publishing the page, so nobody else can register that e-mail.
+3. Publish the rules in `firestore.rules` (the e-mail in them must match `CONFIG.sharedEmail`).
+To change the password later: tap **🔒 → Change password…** in the app (the console can't set one for an existing user, and its reset e-mail would go nowhere). Phones already signed in stay signed in until they tap **🔒 → Sign out**. Use a longer password than a short word plus digits; Firebase slows down repeated wrong guesses but can't stop a patient attacker.
+Demo mode (no Firebase) has no password; its data never leaves the device.
+
 ## Google key (kept out of GitHub)
 Google address search is much better for Irish addresses. The key must never be committed, so `index.html` has none in it. It is read from, in this order:
 1. `config.local.js` next to `index.html` (listed in `.gitignore`, so git ignores it). Create it for local use with: `window.LOCAL_CONFIG = { googleKey: "YOUR_KEY" };`
@@ -53,7 +62,7 @@ Open `index.html` in a browser. With no Firebase config it runs in **demo mode**
 ### 1. Create the database
 1. Go to https://console.firebase.google.com and **Add project**. Pick a hard-to-guess name (it becomes part of the URL). Turn Google Analytics off.
 2. **Build → Firestore Database → Create database**. Choose **production mode** and a European location (e.g. `eur3` or `europe-west2`).
-3. Open the **Rules** tab, paste in the contents of `firestore.rules`, and **Publish**. Edit the expiry date in that file first so it's a few days after your collection day.
+3. **Set up the shared password** (see "Password" below), then open the **Rules** tab, paste in the contents of `firestore.rules`, and **Publish**. Edit the expiry date in that file first so it's a few days after your collection day.
 
 ### 2. Connect the app
 1. **Project settings (gear icon) → General → Your apps → Web (`</>`)**. Register an app (skip "Firebase Hosting" if offered).
@@ -96,5 +105,5 @@ The default address search (OpenStreetMap-based) often finds only the street for
 Notes: a page opened from a local file sends no referrer, so a referrer-restricted key only works on the hosted page. Check Google's terms before relying on this, as they limit using Google geocoding results on non-Google maps.
 
 ## Notes
-- The Firebase API key in the page is meant to be public. What protects the data is the obscure URL plus the expiring rules in `firestore.rules`.
+- The Firebase API key in the page is meant to be public. What protects the data is the shared password (checked by Firebase) plus the expiring rules in `firestore.rules`.
 - Addresses from a spreadsheet are sent to the address search service (OpenStreetMap's Nominatim/Photon, or Google if you add a key) to be located. Address search uses OpenStreetMap's free Nominatim service (with Photon as a backup), which is fine for light use like this. Map tiles are OpenStreetMap's own once the page is hosted. If you open `index.html` straight from your computer, OpenStreetMap blocks its tiles, so request a free key from https://www.carto.com/basemaps/apikey/ (non-commercial use, no account) and paste it into `cartoKey` in the config block.
