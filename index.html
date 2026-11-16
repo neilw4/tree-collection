@@ -243,6 +243,7 @@
     </div>
   </div>
   <p id="hint"></p>
+  <button type="button" class="sec" id="btn-here" style="margin:0 0 8px;padding:8px 12px;font-size:14px">📍 Use my location</button>
   <div class="row actions">
     <button id="btn-cancel" class="sec">Cancel</button>
     <button id="btn-save" class="pri">Save</button>
@@ -836,6 +837,35 @@ function suggestEstate(nameOnly) {
   $('estate-hint').textContent = `Estate suggested from the ${hit.why}. Change it if that's wrong.`;
 }
 
+// ---- the user's last known position (kept in memory only) ----
+let lastFix = null;   // {ll, acc, ts}
+const rememberFix = p => { lastFix = { ll: L.latLng(p.coords.latitude, p.coords.longitude), acc: p.coords.accuracy || 9999, ts: Date.now() }; };
+const freshFix = maxAgeMs => (lastFix && Date.now() - lastFix.ts <= maxAgeMs) ? lastFix : null;
+const usableFix = f => !!f && f.acc <= 100;      // "reasonably well known": within about 100 m
+// is this point inside the part of the map that is on screen (above the open sheet)?
+function inView(ll) {
+  const p = map.latLngToContainerPoint(ll), size = map.getSize();
+  return p.x >= 20 && p.x <= size.x - 20 && p.y >= 20 && p.y <= visibleCentreY() * 2 - 20;
+}
+// Button: put the pin on the user's position. Only here (an explicit tap) may the map pan, and only if the spot is off screen.
+function useMyLocation() {
+  if (!comp) return;
+  if (!navigator.geolocation) { setHint('No GPS available. Drag the pin instead.'); return; }
+  const marker = comp.marker;
+  setHint('Getting your location…');
+  navigator.geolocation.getCurrentPosition(pos => {
+    if (!comp || comp.marker !== marker) return;
+    rememberFix(pos);
+    const ll = lastFix.ll;
+    marker.setLatLng(ll); comp.moved = true; comp.approx = false;
+    if (!inView(ll)) focusOn(ll, Math.max(map.getZoom(), 17));
+    setHint(lastFix.acc > 100 ? `Pin placed, but your location is only accurate to about ${Math.round(lastFix.acc)} m. Drag it if it looks off.` : 'Pin placed at your location. Drag it if it looks off.');
+    suggestEstate();
+  }, () => { if (comp && comp.marker === marker) setHint("Couldn't get your location. Check that location access is allowed, or drag the pin."); },
+  { enableHighAccuracy: true, timeout: 10000 });
+}
+$('btn-here').onclick = useMyLocation;
+
 // mode: 'request' (house) or 'pile'; editId: existing item to edit; prefill: {text, note, trees, estate, time, key}
 function openComposer(mode, editId, prefill) {
   if (!store) { showBanner("Still connecting to the database. If this doesn't clear in a few seconds, check your internet connection and the Firebase settings in index.html.", true); return; }
@@ -877,6 +907,7 @@ function openComposer(mode, editId, prefill) {
   comp = { mode, marker, editId: editId || null, estateTouched: !!ex || !!pf.estate, approx: !!(ex && ex.approx), failKey: pf.key || null };
   marker.on('dragend', () => {
     if (!comp || comp.marker !== marker) return;
+    comp.moved = true;
     comp.approx = false;               // the user has placed it by hand now
     suggestEstate();
   });
@@ -884,16 +915,18 @@ function openComposer(mode, editId, prefill) {
   if (ex) { focusOn(start, Math.max(map.getZoom(), 17)); return; }
 
   if (!isReq) {
-    if (!navigator.geolocation) { setHint('No GPS available. Drag the pin to where the pile is.'); return; }
-    navigator.geolocation.getCurrentPosition(pos => {
-      if (!comp || comp.marker !== marker) return;
-      const ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      marker.setLatLng(ll); focusOn(ll, 18);
-      setHint('Pin placed at your location. Drag it if it looks off.');
-      suggestEstate();
-    }, () => {
-      if (comp && comp.marker === marker) setHint("Couldn't get GPS. Drag the pin to where the pile is.");
-    }, { enableHighAccuracy: true, timeout: 10000 });
+    // The map never moves by itself. Use a recent, accurate fix if it is already on screen; otherwise the pin stays at the centre.
+    setHint('The pin is in the middle of the map. Drag it to the pile, or tap “Use my location”.');
+    const fix = freshFix(10 * 60000);
+    if (fix && usableFix(fix) && inView(fix.ll)) { marker.setLatLng(fix.ll); setHint('Pin placed at your location. Drag it if it looks off.'); suggestEstate(); }
+    else if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        rememberFix(pos);
+        if (!comp || comp.marker !== marker || comp.moved) return;      // the user got there first: leave it alone
+        const f = lastFix;
+        if (usableFix(f) && inView(f.ll)) { marker.setLatLng(f.ll); setHint('Pin placed at your location. Drag it if it looks off.'); suggestEstate(); }
+      }, () => {}, { enableHighAccuracy: true, maximumAge: 120000, timeout: 8000 });
+    }
   } else {
     $('f-text').focus();
   }
@@ -1083,6 +1116,7 @@ $('locate').onclick = () => {
   if (!navigator.geolocation) return alert('Location is not available on this device.');
   navigator.geolocation.getCurrentPosition(p => {
     const ll = [p.coords.latitude, p.coords.longitude];
+    rememberFix(p);
     if (!me) me = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#1971c2', fillOpacity: 1, interactive: false }).addTo(map);
     else me.setLatLng(ll);
     map.setView(ll, Math.max(map.getZoom(), 17));
