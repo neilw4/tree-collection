@@ -1245,6 +1245,9 @@ const firstGlyph = v => {            // keep just one emoji / symbol (a whole gr
 const myAvatar = () => firstGlyph(lsGet(AVATAR_KEY)) || '🚶';
 const randomAvatar = () => AVATARS[Math.floor(Math.random() * AVATARS.length)][0];
 const team = { show: lsGet(SHOW_KEY) !== '0', me: lsGet('tree-collection-show-me') !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
+// People get their own map layer BELOW the normal markers (z-index 450; Leaflet's markers are at 600), so a person's icon or
+// name label can never hide an address or a pile. Their markers also ignore taps, so taps always reach what is underneath.
+if (map.createPane) map.createPane('people').style.zIndex = 450;
 const peopleLayer = L.layerGroup().addTo(map);
 // individual people hidden on this device (by their device id), remembered between visits
 const hiddenPeople = new Set((() => { try { return JSON.parse(lsGet('tree-collection-hidden-people') || '[]'); } catch (e) { return []; } })());
@@ -1263,7 +1266,7 @@ function drawPeople() {
     const stale = age0 > PRES_FRESH_MS;
     L.marker(fix.ll, {
       icon: L.divIcon({ className: '', html: personHtml(myAvatar(), displayName(), stale, true), iconSize: [30, 30], iconAnchor: [15, 15] }),
-      title: `You, as others see you${stale ? ' (last known position)' : ''}`, zIndexOffset: 300, interactive: false
+      title: `You, as others see you${stale ? ' (last known position)' : ''}`, pane: 'people', interactive: false
     }).addTo(peopleLayer);
   }
   if (team.show) {
@@ -1275,7 +1278,7 @@ function drawPeople() {
       const name = (p.who || '').trim();
       L.marker([p.lat, p.lng], {
         icon: L.divIcon({ className: '', html: personHtml(firstGlyph(p.icon) || '🚶', name, stale, false), iconSize: [30, 30], iconAnchor: [15, 15] }),
-        title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
+        title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, pane: 'people', interactive: false
       }).addTo(peopleLayer);
     }
   }
