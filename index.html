@@ -113,6 +113,13 @@
   .who{width:30px;height:30px;border-radius:50%;background:#1971c2;color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:700 13px system-ui;box-sizing:border-box}
   .who.stale{background:#868e96;opacity:.8}
   .who-wrap{position:relative;width:30px;height:30px}
+  .who-ico{width:30px;height:30px;line-height:30px;text-align:center;font-size:25px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.65))}
+  .who-ico.stale{filter:grayscale(1) opacity(.65) drop-shadow(0 1px 2px rgba(0,0,0,.4))}
+  .av-row{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+  .av-row button{font-size:21px;line-height:1;padding:3px 6px;border:2px solid transparent;background:var(--soft);border-radius:9px}
+  .av-row button.sel{border-color:var(--acc)}
+  #teampanel .av-own{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  #teampanel .av-own input{flex:none;width:64px;font-size:20px;text-align:center}
   .who-lbl{position:absolute;left:50%;top:32px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#1b1b1b;font:600 11px/1.3 system-ui;padding:1px 7px;border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none}
   .who-lbl.stale{color:#777;font-weight:500}
   #lockpanel button{display:block;width:100%;margin:6px 0 0;padding:9px 12px;font-size:14px}
@@ -1219,6 +1226,18 @@ const randomHero = (avoid = []) => {
 };
 const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = randomHero(); lsSet('tree-collection-hero', h); } return h; };
 const displayName = () => getName() || myHero();
+// What other people see on the map for you: a gender-neutral person by default, or a van, or something sillier, or any emoji you type.
+const AVATARS = [['🧑', 'Person'], ['🚐', 'Van'], ['🧑‍🎄', 'Mx Claus'], ['🦌', 'Reindeer'], ['🛷', 'Sleigh'], ['🐌', 'Snail (slow but steady)'],
+  ['🦖', 'T-rex'], ['🦄', 'Unicorn'], ['🐧', 'Penguin'], ['🚜', 'Tractor'], ['🦆', 'Duck'], ['🧙', 'Wizard']];
+const AVATAR_KEY = 'tree-collection-avatar';
+const firstGlyph = v => {            // keep just one emoji / symbol (a whole grapheme, so flags and ZWJ sequences stay intact)
+  v = String(v || '').trim();
+  if (!v) return '';
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(v)][0].segment;
+  return [...v].slice(0, 4).join('');
+};
+const myAvatar = () => firstGlyph(lsGet(AVATAR_KEY)) || '🧑';
+const randomAvatar = () => AVATARS[Math.floor(Math.random() * AVATARS.length)][0];
 const team = { show: lsGet(SHOW_KEY) !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
 const peopleLayer = L.layerGroup().addTo(map);
 // individual people hidden on this device (by their device id), remembered between visits
@@ -1237,9 +1256,9 @@ function drawPeople() {
     if (!(age <= PRES_GONE_MS)) continue;              // more than 10 minutes old: gone
     const stale = age > PRES_FRESH_MS;                 // more than 2 minutes old: grey
     const name = (p.who || '').trim();
-    const initial = name ? [...name][0].toUpperCase() : '👤';
+    const icon = firstGlyph(p.icon) || '🧑';
     L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: '', html: `<div class="who-wrap"><div class="who${stale ? ' stale' : ''}">${esc(initial)}</div><div class="who-lbl${stale ? ' stale' : ''}">${esc(name || 'Someone')}</div></div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
+      icon: L.divIcon({ className: '', html: `<div class="who-wrap"><div class="who-ico${stale ? ' stale' : ''}">${esc(icon)}</div><div class="who-lbl${stale ? ' stale' : ''}">${esc(name || 'Someone')}</div></div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
       title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
     }).addTo(peopleLayer);
   }
@@ -1255,7 +1274,7 @@ function sharePoll() {
     rememberFix(pos);
     askNameOnce();
     store.set(MY_PRES, { type: 'presence', cid: CID, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0),
-      ts: pos.timestamp || Date.now(), who: displayName() });
+      ts: pos.timestamp || Date.now(), who: displayName(), icon: myAvatar() });
     team.msg = ''; renderTeamPanel(true);
   }, e => {
     if (e && e.code === 1) stopSharing('Location access was refused. Allow it for this site in the browser settings to share.');
@@ -1289,6 +1308,13 @@ function renderTeamPanel(keepFocus) {
   const now = Date.now();
   const live = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).sort((a, b) => (a.who || '').localeCompare(b.who || ''));
   const others = live.length;
+  const setAvatar = v => { lsSet(AVATAR_KEY, v); if (team.share) sharePoll(); renderTeamPanel(); };
+  const cur = myAvatar();
+  const avRow = el('div', { className: 'av-row' }, ...AVATARS.map(([g, label]) =>
+    el('button', { type: 'button', textContent: g, title: label, 'aria-label': label, className: g === cur ? 'sel' : '', onclick: () => setAvatar(g) })));
+  const own = el('input', { type: 'text', placeholder: '🙂', maxLength: 12, 'aria-label': 'Your own emoji',
+    onchange: () => { const g = firstGlyph(own.value); if (g) setAvatar(g); } });
+  const ownRow = el('div', { className: 'av-own' }, el('span', { textContent: 'or your own emoji:' }), own);
   const personRows = live.map(x => {
     const box = el('input', { type: 'checkbox', checked: !hiddenPeople.has(x.cid),
       onchange: () => { if (box.checked) hiddenPeople.delete(x.cid); else hiddenPeople.add(x.cid); saveHiddenPeople(); drawPeople(); } });
@@ -1299,6 +1325,7 @@ function renderTeamPanel(keepFocus) {
     el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
+    el('div', { className: 'small', textContent: 'Your icon on the map' }), avRow, ownRow,
     ...(team.show && personRows.length ? [el('div', { className: 'small', textContent: 'Untick a person to hide just them:' }), ...personRows] : []),
     el('div', { className: 'small', textContent: team.msg || 'Only people with the password can see it. Untick “Share” to disappear straight away.' }));
 }
@@ -2011,7 +2038,7 @@ const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d 
 function addWalker() {
   if (!demoMode) return;
   const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
-  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), icon: Math.random() < 0.5 ? '🧑' : randomAvatar(), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
     lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
   sims.push(w);
   team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
@@ -2080,7 +2107,7 @@ function simTick(dt) {
     simLast = now;
     for (; left > 0; left -= 2) simStep(Math.min(2, left));
   } else simStep(dt);
-  for (const w of sims) people.set(w.id, { type: 'presence', cid: w.id, lat: w.lat, lng: w.lng, acc: 6, ts: Date.now(), who: w.name });
+  for (const w of sims) people.set(w.id, { type: 'presence', cid: w.id, lat: w.lat, lng: w.lng, acc: 6, ts: Date.now(), who: w.name, icon: w.icon });
   drawPeople();
 }
 
