@@ -30,9 +30,8 @@
   .stats{display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;margin-top:5px;font-size:13px}
   .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
   .tools .fbtn{padding:4px 11px}
-  .tools .nm-in{margin-left:auto;width:118px;min-width:0;background:rgba(255,255,255,.16);color:var(--hdr-fg);border:1px solid rgba(127,127,127,.7);border-radius:14px;padding:4px 10px;font-size:13px}
-  .tools .nm-in::placeholder,#teampanel input::placeholder{color:#9aa0a6;opacity:1}
-  .tools .nm-in::placeholder{color:rgba(255,255,255,.6)}
+  .tools #btn-theme{margin-left:auto}
+  #teampanel input::placeholder{color:#9aa0a6;opacity:1}
   #estpanel .sect{font-weight:600;margin:8px 0 2px}
   .chip{display:flex;align-items:center;gap:6px}
   .sw{width:14px;height:14px;border:2px solid #fff;display:inline-block;flex:none}
@@ -201,7 +200,6 @@
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
     <button class="fbtn" id="btn-team" aria-expanded="false">👥 Location</button>
     <button class="fbtn" id="btn-lock" hidden>🔒 Account</button>
-    <input id="my-name" class="nm-in" type="text" maxlength="30" autocomplete="nickname" aria-label="Your name">
     <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme" title="Theme">🎨</button>
   </div>
 </header>
@@ -1251,6 +1249,7 @@ function sharePoll() {
   navigator.geolocation.getCurrentPosition(pos => {
     if (!team.share) return;
     rememberFix(pos);
+    askNameOnce();
     store.set(MY_PRES, { type: 'presence', cid: CID, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0),
       ts: pos.timestamp || Date.now(), who: displayName() });
     team.msg = ''; renderTeamPanel(true);
@@ -1306,22 +1305,20 @@ $('btn-team').onclick = () => {
   $('btn-team').setAttribute('aria-expanded', String(!p.hidden));
   renderTeamPanel();
 };
-// The name box next to the theme button and the one in the Location panel are the same setting.
-// Empty = others see the random superhero name shown (grey) as the placeholder.
+// Name: set in the Location panel. Empty = others see the random superhero name shown (grey) as the placeholder.
 function setMyName(v) {
   lsSet(NAME_KEY, String(v).trim());
-  const box = $('my-name');
-  if (box.value !== String(v)) box.value = v;
   if (team.share) sharePoll();
 }
-function initNameBox() {
-  const box = $('my-name');
-  box.placeholder = myHero(); box.value = getName();
-  box.oninput = () => { setMyName(box.value); renderTeamPanel(true); };
+// Once, right after the browser has given us location access, offer to add a name.
+function askNameOnce() {
+  if (lsGet('tree-collection-name-asked') || getName()) return;
+  lsSet('tree-collection-name-asked', '1');
+  const v = prompt(`Location sharing is on. Add your name so the team can see who you are? (Optional. Leave it blank to appear as “${myHero()}”. You can change it any time in 👥 Location.)`, '');
+  if (v && v.trim()) { setMyName(v); renderTeamPanel(); }
 }
 function initTeam() {            // called once the store is connected
   updateTeamButton();
-  initNameBox();
   if (lsGet(SHARE_KEY) !== '0' && !demoMode) startSharing();
   window.addEventListener('pagehide', () => { if (team.share && store && !demoMode) store.remove(MY_PRES); });
 }
