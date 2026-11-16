@@ -30,7 +30,10 @@
   .stats{display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;margin-top:5px;font-size:13px}
   .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
   .tools .fbtn{padding:4px 11px}
-  .tools #btn-theme{margin-left:auto}
+  .tools .nm-in{margin-left:auto;width:118px;min-width:0;background:rgba(255,255,255,.16);color:var(--hdr-fg);border:1px solid rgba(127,127,127,.7);border-radius:14px;padding:4px 10px;font-size:13px}
+  .tools .nm-in::placeholder,#teampanel input::placeholder{color:#9aa0a6;opacity:1}
+  .tools .nm-in::placeholder{color:rgba(255,255,255,.6)}
+  #estpanel .sect{font-weight:600;margin:8px 0 2px}
   .chip{display:flex;align-items:center;gap:6px}
   .sw{width:14px;height:14px;border:2px solid #fff;display:inline-block;flex:none}
   .sw.req{border-radius:50%;background:#e8590c}
@@ -193,18 +196,12 @@
     <span class="chip"><span class="hico pile" id="ico-pile"></span><span id="stat-pile">…</span></span>
     <span id="status"></span>
   </div>
-  <div class="filters">
-    <span>Show:</span>
-    <label><input type="checkbox" id="show-requests" checked> Addresses</label>
-    <label><input type="checkbox" id="show-piles" checked> Piles</label>
-    <label><input type="checkbox" id="show-collected" checked> Collected</label>
-    <label><input type="checkbox" id="show-estates" checked> Outlines</label>
-  </div>
   <div class="tools">
-    <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
+    <button class="fbtn" id="btn-estates" aria-expanded="false">Show ▾</button>
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
-    <button class="fbtn" id="btn-team" aria-expanded="false">👥 Team</button>
+    <button class="fbtn" id="btn-team" aria-expanded="false">👥 Location</button>
     <button class="fbtn" id="btn-lock" hidden>🔒 Account</button>
+    <input id="my-name" class="nm-in" type="text" maxlength="30" autocomplete="nickname" aria-label="Your name">
     <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme" title="Theme">🎨</button>
   </div>
 </header>
@@ -214,7 +211,14 @@
 <div id="mapwrap">
   <div id="map"></div>
   <button id="locate" title="Where am I?" aria-label="Where am I?">◎</button>
-  <div id="estpanel" hidden></div>
+  <div id="estpanel" hidden>
+    <div class="eh"><span>Show</span></div>
+    <label><input type="checkbox" id="show-requests" checked> Addresses</label>
+    <label><input type="checkbox" id="show-piles" checked> Piles</label>
+    <label><input type="checkbox" id="show-collected" checked> Collected</label>
+    <label><input type="checkbox" id="show-estates" checked> Estate outlines</label>
+    <div id="estlist"></div>
+  </div>
   <div id="logpanel" hidden></div>
   <div id="themepanel" hidden></div>
   <div id="teampanel" hidden></div>
@@ -652,12 +656,12 @@ function pruneEstates() {
 
 /* Estates panel: switch each estate (outline + its houses and piles) on or off */
 function renderEstatePanel() {
-  const p = $('estpanel');
+  const p = $('estpanel'), box = $('estlist');
   const list = [...estates.entries()].filter(([id, e]) => estateMembers(id).length > 0).sort((a, b) => a[1].name.localeCompare(b[1].name));
   const off = list.filter(([id]) => hiddenEstates.has(id)).length;
-  $('btn-estates').textContent = (off ? `Estates (${off} off)` : 'Estates') + (p.hidden ? ' ▾' : ' ▴');
+  $('btn-estates').textContent = (off ? `Show (${off} estate${off > 1 ? 's' : ''} off)` : 'Show') + (p.hidden ? ' ▾' : ' ▴');
   if (p.hidden) return;
-  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Show estates' }),
+  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Estates' }),
     el('button', { textContent: 'All', onclick: () => setAllEstates(true) }),
     el('button', { textContent: 'None', onclick: () => setAllEstates(false) }));
   const rows = list.map(([id, e]) => {
@@ -668,7 +672,7 @@ function renderEstatePanel() {
     return el('label', {}, box, dot, el('span', { className: 'nm', textContent: e.name + (e.time ? ' · ' + fmtHM(e.time) : '') }),
       el('span', { className: 'ct', textContent: left + ' left' }));
   });
-  p.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'No estates yet. Give an address or pile an estate name when you add it.' })]));
+  box.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'No estates yet. Give an address or pile an estate name when you add it.' })]));
 }
 function toggleEstate(id, on) {
   if (on) hiddenEstates.delete(id); else hiddenEstates.add(id);
@@ -1214,7 +1218,7 @@ const randomHero = (avoid = []) => {
 };
 const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = randomHero(); lsSet('tree-collection-hero', h); } return h; };
 const displayName = () => getName() || myHero();
-const team = { show: lsGet(SHOW_KEY) === '1', share: false, timer: 0, msg: '' };
+const team = { show: lsGet(SHOW_KEY) !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
 const peopleLayer = L.layerGroup().addTo(map);
 
 function ageText(ms) { const s = Math.round(ms / 1000); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; }
@@ -1266,7 +1270,7 @@ function stopSharing(msg) {
 }
 function updateTeamButton() {
   const b = $('btn-team');
-  b.textContent = team.share ? '👥 Sharing' : '👥 Team';
+  b.textContent = team.share ? '👥 Sharing' : '👥 Location';
   b.classList.toggle('on', team.share);
 }
 function renderTeamPanel(keepFocus) {
@@ -1275,15 +1279,14 @@ function renderTeamPanel(keepFocus) {
   if (keepFocus && p.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // don't disturb typing
   const share = el('input', { type: 'checkbox', checked: team.share, onchange: () => (share.checked ? startSharing() : stopSharing()) });
   const show = el('input', { type: 'checkbox', checked: team.show, onchange: () => { team.show = show.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); } });
-  const name = el('input', { type: 'text', placeholder: 'Your name (optional)', value: getName(), maxLength: 30,
-    oninput: () => { lsSet(NAME_KEY, name.value.trim()); if (team.share) sharePoll(); } });
+  const name = el('input', { type: 'text', placeholder: myHero(), value: getName(), maxLength: 30, oninput: () => setMyName(name.value) });
   const others = [...people.values()].filter(x => x.cid !== CID && Date.now() - x.ts <= PRES_GONE_MS).length;
   p.replaceChildren(
-    el('div', { className: 'eh', textContent: 'Team locations' }),
+    el('div', { className: 'eh', textContent: 'Location' }),
     el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
-    el('div', { className: 'small', textContent: team.msg || `Without a name, others see you as “${myHero()}”. Off by default. Only people with the password can see it. Untick “Share” to disappear straight away. Positions older than 2 minutes turn grey and vanish after 10.` }));
+    el('div', { className: 'small', textContent: team.msg || 'Only people with the password can see it. Untick “Share” to disappear straight away.' }));
 }
 $('btn-team').onclick = () => {
   const p = $('teampanel');
@@ -1292,9 +1295,23 @@ $('btn-team').onclick = () => {
   $('btn-team').setAttribute('aria-expanded', String(!p.hidden));
   renderTeamPanel();
 };
+// The name box next to the theme button and the one in the Location panel are the same setting.
+// Empty = others see the random superhero name shown (grey) as the placeholder.
+function setMyName(v) {
+  lsSet(NAME_KEY, String(v).trim());
+  const box = $('my-name');
+  if (box.value !== String(v)) box.value = v;
+  if (team.share) sharePoll();
+}
+function initNameBox() {
+  const box = $('my-name');
+  box.placeholder = myHero(); box.value = getName();
+  box.oninput = () => { setMyName(box.value); renderTeamPanel(true); };
+}
 function initTeam() {            // called once the store is connected
   updateTeamButton();
-  if (lsGet(SHARE_KEY) === '1' && !demoMode) startSharing();
+  initNameBox();
+  if (lsGet(SHARE_KEY) !== '0' && !demoMode) startSharing();
   window.addEventListener('pagehide', () => { if (team.share && store && !demoMode) store.remove(MY_PRES); });
 }
 
@@ -1306,7 +1323,7 @@ const labelOf = d => d.type === 'pile' ? (d.note || 'Pile') : (d.text || 'addres
 
 function logAct(action, targetId, d, snapshot, who) {
   if (!store) return;
-  const entry = { type: 'log', ts: Date.now(), who: who ?? getName(), action, targetId: targetId || '', kind: d.type === 'pile' ? 'pile' : 'request', label: labelOf(d) };
+  const entry = { type: 'log', ts: Date.now(), who: who ?? displayName(), action, targetId: targetId || '', kind: d.type === 'pile' ? 'pile' : 'request', label: labelOf(d) };
   if (snapshot) entry.snapshot = snapshot;
   store.add(entry);
 }
@@ -1344,9 +1361,7 @@ const undoLabel = l => l.action === 'deleted' ? 'Restore' : 'Undo';
 function renderLog() {
   const p = $('logpanel');
   if (p.hidden) return;
-  const name = el('input', { type: 'text', placeholder: 'Your name', value: getName(), maxLength: 30,
-    oninput: () => { try { localStorage.setItem(NAME_KEY, name.value.trim()); } catch (e) {} } });
-  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Activity' }), name);
+  const head = el('div', { className: 'eh' }, el('span', { textContent: 'Activity' }));
   const rows = [...logs.entries()].sort((a, b) => b[1].ts - a[1].ts).slice(0, 100).map(([id, l]) => {
     const undo = logUndo(id, l);
     const row = el('div', { className: 'lg' + (l.undone ? ' undone' : '') },
@@ -1420,7 +1435,6 @@ function seedSample(st) {
 function clearSample() {
   for (const [id, d] of [...items]) if (d.sample) store.remove(id);
   for (const [id, e] of [...estates]) if (e.sample) { estates.delete(id); hiddenEstates.delete(id); store.remove(id); }
-  try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
   sampleOn = false; renderDemoActions();
   refreshEstateList(); scheduleEstates();
 }
@@ -1445,7 +1459,6 @@ function clearAll() {
   removeWalkers();
   store.clearAll();
   hiddenEstates.clear();
-  try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
   sampleOn = false; renderDemoActions();
   map.closePopup();
   refreshEstateList(); scheduleEstates(); updateStats(); renderLog();
@@ -1986,11 +1999,11 @@ const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d 
 function addWalker() {
   if (!demoMode) return;
   const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
-  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), target: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
     lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
   sims.push(w);
   team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
-  if (!simTimer) simTimer = setInterval(() => simTick(simSpeed), 1000);
+  if (!simTimer) { simLast = Date.now(); simTimer = setInterval(() => simTick(), 1000); }
   simTick(0); renderDemoActions(); renderTeamPanel();
 }
 function removeWalkers() {
@@ -1999,8 +2012,29 @@ function removeWalkers() {
   drawPeople();
   if (demoMode) renderDemoActions();
 }
-function simTick(dt) {      // dt = simulated seconds since the last tick
-  if (!demoMode || !store) return;
+// Choose the next tree. Walkers never share a tree, and spread out over different estates while several have trees left.
+function pickTarget(w) {
+  const taken = new Set(sims.filter(x => x !== w).map(x => x.target).filter(Boolean));
+  const open = [...items].filter(([id, d]) => d.type === 'request' && !d.done && !taken.has(id) && !String(d.text).includes('outside the area'));
+  if (!open.length) { w.estate = null; return null; }
+  const key = d => d.estate || '';
+  const nearest = list => list.reduce((b, [id, d]) => { const m = metresBetween(w, d); return m < b.m ? { id, m } : b; }, { id: null, m: Infinity });
+  let mine = w.estate != null ? open.filter(([, d]) => key(d) === w.estate) : [];       // stay in my estate while it has trees left
+  if (!mine.length) {
+    const claimed = new Set(sims.filter(x => x !== w && x.estate != null).map(x => x.estate));
+    const groups = [...new Set(open.map(([, d]) => key(d)))];
+    const free = groups.filter(g => !claimed.has(g));
+    let best = null, bm = Infinity;
+    for (const g of (free.length ? free : groups)) {
+      const m = nearest(open.filter(([, d]) => key(d) === g)).m;
+      if (m < bm) { bm = m; best = g; }
+    }
+    w.estate = best;
+    mine = open.filter(([, d]) => key(d) === best);
+  }
+  return nearest(mine).id;
+}
+function simStep(dt) {      // dt = simulated seconds
   for (const w of sims) {
     if (w.pause > 0) {                                     // standing at the tree, picking it up
       w.pause -= dt;
@@ -2009,34 +2043,32 @@ function simTick(dt) {      // dt = simulated seconds since the last tick
         if (d && !d.done) { store.update(w.target, { done: true, doneAt: Date.now() }); logAct('done', w.target, d, undefined, w.name); }
         w.target = null;
       }
-    } else {
-      if (w.target && (!items.get(w.target) || items.get(w.target).done)) w.target = null;    // someone else got it
-      if (!w.target) {
-        const taken = new Set(sims.map(x => x.target).filter(Boolean));
-        let best = null, bd = Infinity;
-        for (const [id, d] of items) {
-          if (d.type !== 'request' || d.done || taken.has(id) || String(d.text).includes('outside the area')) continue;
-          const m = metresBetween(w, d);
-          if (m < bd) { bd = m; best = id; }
-        }
-        w.target = best;
-      }
-      if (w.target && dt > 0) {
-        const t = items.get(w.target), dist = metresBetween(w, t);
-        if (dist <= 4) { w.pause = 4 + Math.random() * 6; }
-        else {
-          const want = Math.atan2((t.lng - w.lng) * Math.cos(w.lat * Math.PI / 180), t.lat - w.lat);   // 0 = north, straight to the tree
-          const turn = Math.max(-1.6 * dt, Math.min(1.6 * dt, angDiff(w.heading, want)));              // can turn about 90° a second
-          w.heading += turn + (Math.random() - 0.5) * 0.12 * Math.sqrt(dt);                             // small wobble, like a real gait
-          w.speed = Math.max(1.1, Math.min(1.7, w.speed + (Math.random() - 0.5) * 0.08));
-          const step = Math.min(w.speed * dt, dist);
-          w.lat += step * Math.cos(w.heading) / M_PER_DEG;
-          w.lng += step * Math.sin(w.heading) / (M_PER_DEG * Math.cos(w.lat * Math.PI / 180));
-        }
-      }
+      continue;
     }
-    people.set(w.id, { type: 'presence', cid: w.id, lat: w.lat, lng: w.lng, acc: 6, ts: Date.now(), who: w.name });
+    const cur = w.target && items.get(w.target);
+    if (!cur || cur.done) w.target = null;               // collected by someone else, or gone
+    if (!w.target) w.target = pickTarget(w);
+    if (!w.target || dt <= 0) continue;
+    const t = items.get(w.target), dist = metresBetween(w, t);
+    if (dist <= 4) { w.pause = 4 + Math.random() * 6; continue; }
+    const want = Math.atan2((t.lng - w.lng) * Math.cos(w.lat * Math.PI / 180), t.lat - w.lat);   // 0 = north, straight to the tree
+    w.heading += Math.max(-1.6 * dt, Math.min(1.6 * dt, angDiff(w.heading, want))) + (Math.random() - 0.5) * 0.12 * Math.sqrt(dt);
+    w.speed = Math.max(1.1, Math.min(1.7, w.speed + (Math.random() - 0.5) * 0.08));
+    const step = Math.min(w.speed * dt, dist);
+    w.lat += step * Math.cos(w.heading) / M_PER_DEG;
+    w.lng += step * Math.sin(w.heading) / (M_PER_DEG * Math.cos(w.lat * Math.PI / 180));
   }
+}
+let simLast = 0;
+function simTick(dt) {
+  if (!demoMode || !store) return;
+  if (dt === undefined) {                // from the timer: use the real time that has passed, so a throttled background tab catches up
+    const now = Date.now();
+    let left = Math.min((now - simLast) / 1000, 120) * simSpeed;
+    simLast = now;
+    for (; left > 0; left -= 2) simStep(Math.min(2, left));
+  } else simStep(dt);
+  for (const w of sims) people.set(w.id, { type: 'presence', cid: w.id, lat: w.lat, lng: w.lng, acc: 6, ts: Date.now(), who: w.name });
   drawPeople();
 }
 
@@ -2112,9 +2144,7 @@ const isSet = v => v && !String(v).startsWith('PASTE');
   } else {
     demoMode = true;
     store = createLocalStore();
-    let cleared = false;
-    try { cleared = !!localStorage.getItem('tree-collection-sample-cleared'); } catch (e) {}
-    const seeded = !cleared && store.isEmpty();
+    const seeded = store.isEmpty();      // an empty demo (e.g. after Clear all + refresh) starts with the sample data again
     if (seeded) seedSample(store);
     sampleOn = seeded; renderDemoActions();
   }

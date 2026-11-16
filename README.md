@@ -9,8 +9,8 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 - The **Show** checkboxes at the top hide/show addresses, piles, and collected items (to declutter the map)
 - The base map is deliberately greyscale so the tree icons stand out (one CSS line in `index.html` if you'd like colour back)
 
-## Team locations
-The **👥** button opens a panel with two separate, optional switches, both off by default: **See where others are** and **Share my location with the team**, plus an optional **Name** (shown to others on hover, and its first letter is the marker). Anyone who hasn't typed a name appears as a random superhero (kept on their device), as do the demo walkers. While sharing, the phone sends its position every 30 seconds; switching sharing off deletes it at once. A marker turns grey when its last position is more than 2 minutes old and disappears after 10 minutes (so a phone that closes the page fades away by itself). Only people signed in with the shared password can see the positions. In demo mode there is nothing to share with.
+## Location
+The **👥 Location** button opens a panel with two separate switches, both **on** by default: **See where others are** and **Share my location with the team** (the phone still asks permission the first time). The **name** box next to the 🎨 button (also shown in the panel) is optional: with no name you appear as a random superhero name, shown in grey in the box. While sharing, the phone sends its position every 30 seconds; unticking Share removes it at once. A marker turns grey when its last position is more than 2 minutes old and disappears after 10 minutes (so a phone that closes the page fades away by itself). Only people signed in with the shared password can see the positions. In demo mode there is nothing to share with.
 
 ## Demo walkers
 In demo mode the banner has **🚶 Add walker**: a simulated volunteer appears near the middle of the map and walks in a straight line at about 1.4 m/s to the nearest uncollected address that no other walker is heading for, stops a few seconds, marks it collected (it shows in the activity log under their name) and moves on. Add as many as you like; **⏩ Speed** switches between real time and ×10, and **Remove walkers** stops them. They appear as team markers, so it's a quick way to see how the team view looks.
@@ -45,7 +45,7 @@ A key in a web page can always be read by anyone who opens that page, so also re
 - When adding or editing a house **or a pile** you can give it an **estate** and a **pickup time**. Pick an existing estate from the list or type a new name and it is created.
 - The app suggests the estate for you: if the address you typed contains an existing estate's name, or the pin lands within about 60 m of a house in that estate, the estate field is filled in (and you can change it).
 - On the map each estate is a pastel-coloured outline (every estate gets its own colour) around its houses with a label: name, pickup time and how many houses are collected (e.g. "Beech Park · 10:00am · 2/8"). It turns grey with a tick when every house is done. Tap the outline to edit the estate's name or pickup time, or to delete the estate (its houses stay).
-- The **Outlines** checkbox in the Show row hides all the outlines. The **Estates ▾** button opens a list where each estate can be switched on or off separately (its outline, houses and piles); All/None buttons switch them all.
+- The **Show ▾** button opens a panel with the Addresses / Piles / Collected / Estate outlines switches, and below them a list where each estate can be switched on or off separately (its outline, houses and piles); All/None switch them all.
 
 ## Adding many houses from a spreadsheet
 Tap **+ Address**, then **⬆ Add many from a spreadsheet** under the search box.
