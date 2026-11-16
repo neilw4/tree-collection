@@ -30,7 +30,7 @@
   .stats{display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;margin-top:5px;font-size:13px}
   .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
   .tools .fbtn{padding:4px 11px}
-  .tools #btn-theme{margin-left:auto}
+  .tools #btn-log{margin-left:auto}
   #teampanel input::placeholder{color:#9aa0a6;opacity:1}
   #estpanel .sect{font-weight:600;margin:8px 0 2px}
   .chip{display:flex;align-items:center;gap:6px}
@@ -211,9 +211,9 @@
   </div>
   <div class="tools">
     <button class="fbtn" id="btn-estates" aria-expanded="false">Show ▾</button>
-    <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
     <button class="fbtn" id="btn-team" aria-expanded="false">👥 Location</button>
     <button class="fbtn" id="btn-lock" hidden>🔒 Account</button>
+    <button class="fbtn" id="btn-log" aria-expanded="false" aria-label="Activity log" title="Activity log">📜</button>
     <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme" title="Theme">🎨</button>
   </div>
 </header>
@@ -229,6 +229,7 @@
     <label><input type="checkbox" id="show-piles" checked> Piles</label>
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
     <label><input type="checkbox" id="show-estates" checked> Estate outlines</label>
+    <label><input type="checkbox" id="show-people" checked> <span id="show-people-lbl">See where others are</span></label>
     <div id="estlist"></div>
   </div>
   <div id="logpanel" hidden></div>
@@ -1277,6 +1278,8 @@ function drawPeople() {
       }).addTo(peopleLayer);
     }
   }
+  const n = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).length;
+  $('show-people-lbl').textContent = 'See where others are' + (team.show && n ? ` (${n} sharing)` : '');
   renderTeamPanel(true);
 }
 setInterval(drawPeople, 15000);   // let markers age (grey, then disappear) even when nothing new arrives
@@ -1318,7 +1321,6 @@ function renderTeamPanel(keepFocus) {
   if (p.hidden) return;
   if (keepFocus && p.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // don't disturb typing
   const share = el('input', { type: 'checkbox', checked: team.share, onchange: () => (share.checked ? startSharing() : stopSharing()) });
-  const show = el('input', { type: 'checkbox', checked: team.show, onchange: () => { team.show = show.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); } });
   const name = el('input', { type: 'text', placeholder: myHero(), value: getName(), maxLength: 30, oninput: () => setMyName(name.value) });
   const now = Date.now();
   const live = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).sort((a, b) => (a.who || '').localeCompare(b.who || ''));
@@ -1337,7 +1339,6 @@ function renderTeamPanel(keepFocus) {
   });
   p.replaceChildren(
     el('div', { className: 'eh', textContent: 'Location' }),
-    el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
     el('div', { className: 'small', textContent: 'Your icon on the map' }), avRow, ownRow,
@@ -1366,7 +1367,9 @@ function askNameOnce() {
   const v = prompt(`Location sharing is on. Add your name so the team can see who you are? (Optional. Leave it blank to appear as “${myHero()}”. You can change it any time in 👥 Location.)`, '');
   if (v && v.trim()) { setMyName(v); renderTeamPanel(); }
 }
-function initTeam() {            // called once the store is connected
+$('show-people').onchange = e => { team.show = e.target.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); };
+function initTeam() {
+  $('show-people').checked = team.show;            // called once the store is connected
   updateTeamButton();
   if (lsGet(SHARE_KEY) !== '0' && !demoMode) startSharing();
   window.addEventListener('pagehide', () => { if (team.share && store && !demoMode) store.remove(MY_PRES); });
