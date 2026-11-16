@@ -12,6 +12,9 @@ One-page web app: add addresses for tree collection, mark them collected, drop p
 ## Team locations
 The **👥** button opens a panel with two separate, optional switches, both off by default: **See where others are** and **Share my location with the team**, plus an optional **Name** (shown to others on hover, and its first letter is the marker). While sharing, the phone sends its position every 30 seconds; switching sharing off deletes it at once. A marker turns grey when its last position is more than 2 minutes old and disappears after 10 minutes (so a phone that closes the page fades away by itself). Only people signed in with the shared password can see the positions. In demo mode there is nothing to share with.
 
+## Demo walkers
+In demo mode the banner has **🚶 Add walker**: a simulated volunteer appears near the middle of the map and walks in a straight line at about 1.4 m/s to the nearest uncollected address that no other walker is heading for, stops a few seconds, marks it collected (it shows in the activity log under their name) and moves on. Add as many as you like; **⏩ Speed** switches between real time and ×10, and **Remove walkers** stops them. They appear as team markers, so it's a quick way to see how the team view looks.
+
 ## Password
 When Firebase is connected the app asks for a shared password before showing anything. It is real protection, not just a screen in front of the page: Firebase Authentication checks the password (it stores only a salted hash) and `firestore.rules` only allows that one account to read or write. A password hash inside `index.html` would NOT be secure, because anyone could read the page, copy the Firebase settings and talk to the database directly. Because of this, the password is never in this repository.
 One-time setup in the Firebase console:

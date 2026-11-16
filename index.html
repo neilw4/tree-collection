@@ -1289,9 +1289,9 @@ const NAME_KEY = 'tree-collection-name';
 const getName = () => { try { return localStorage.getItem(NAME_KEY) || ''; } catch (e) { return ''; } };
 const labelOf = d => d.type === 'pile' ? (d.note || 'Pile') : (d.text || 'address');
 
-function logAct(action, targetId, d, snapshot) {
+function logAct(action, targetId, d, snapshot, who) {
   if (!store) return;
-  const entry = { type: 'log', ts: Date.now(), who: getName(), action, targetId: targetId || '', kind: d.type === 'pile' ? 'pile' : 'request', label: labelOf(d) };
+  const entry = { type: 'log', ts: Date.now(), who: who ?? getName(), action, targetId: targetId || '', kind: d.type === 'pile' ? 'pile' : 'request', label: labelOf(d) };
   if (snapshot) entry.snapshot = snapshot;
   store.add(entry);
 }
@@ -1418,10 +1418,16 @@ function renderDemoActions() {
   const a = $('banner-actions');
   a.replaceChildren();
   if (sampleOn) a.append(el('button', { textContent: 'Clear sample data', onclick: () => { if (confirm('Remove the sample addresses, piles and estates?')) clearSample(); } }));
+  a.append(el('button', { textContent: '🚶 Add walker', onclick: addWalker }));
+  if (sims.length) {
+    a.append(el('button', { textContent: `Remove walkers (${sims.length})`, onclick: removeWalkers }));
+    a.append(el('button', { textContent: simSpeed === 1 ? '⏩ Speed ×1' : '⏩ Speed ×10', onclick: () => { simSpeed = simSpeed === 1 ? 10 : 1; renderDemoActions(); } }));
+  }
   a.append(el('button', { textContent: 'Clear all', onclick: clearAll }));
 }
 function clearAll() {
   if (!demoMode || !confirm('Delete ALL addresses, piles, estates and activity-log entries stored on this device? This cannot be undone.')) return;
+  removeWalkers();
   store.clearAll();
   hiddenEstates.clear();
   try { localStorage.setItem('tree-collection-sample-cleared', '1'); } catch (e) {}
@@ -1947,6 +1953,78 @@ $('imp-stop').onclick = () => { imp.cancel = true; $('imp-status').textContent =
 
 window.__appReady = true;   // every button is wired up from here on
 if (window.__watchdogShown) { $('banner').hidden = true; window.__watchdogShown = false; }
+
+/* ---------------- demo walkers (demo mode only) ---------------- */
+// Simulated volunteers: each walks in a straight line at a human pace (about 1.4 m/s, with a wobbly heading and slowly varying
+// speed) to the nearest uncollected address that no other walker is heading for, stops for a few seconds, marks it collected,
+// then picks the next. They show up as team markers (and in the activity log), exactly like real people.
+const WALKER_NAMES = ['Aoife', 'Cian', 'Niamh', 'Seán', 'Orla', 'Dara', 'Róisín', 'Eoin', 'Saoirse', 'Fionn'];
+const sims = [];
+let simTimer = 0, simSpeed = 1, simSeq = 0;
+const M_PER_DEG = 111320;
+const metresBetween = (a, b) => {
+  const r = x => x * Math.PI / 180, dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+};
+const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d -= 2 * Math.PI; if (d < -Math.PI) d += 2 * Math.PI; return d; };
+
+function addWalker() {
+  if (!demoMode) return;
+  const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
+  const w = { id: 'sim-' + (++simSeq), name: WALKER_NAMES[(simSeq - 1) % WALKER_NAMES.length], target: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+    lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
+  sims.push(w);
+  team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
+  if (!simTimer) simTimer = setInterval(() => simTick(simSpeed), 1000);
+  simTick(0); renderDemoActions(); renderTeamPanel();
+}
+function removeWalkers() {
+  for (const w of sims) people.delete(w.id);
+  sims.length = 0; clearInterval(simTimer); simTimer = 0;
+  drawPeople();
+  if (demoMode) renderDemoActions();
+}
+function simTick(dt) {      // dt = simulated seconds since the last tick
+  if (!demoMode || !store) return;
+  for (const w of sims) {
+    if (w.pause > 0) {                                     // standing at the tree, picking it up
+      w.pause -= dt;
+      if (w.pause <= 0) {
+        const d = items.get(w.target);
+        if (d && !d.done) { store.update(w.target, { done: true, doneAt: Date.now() }); logAct('done', w.target, d, undefined, w.name); }
+        w.target = null;
+      }
+    } else {
+      if (w.target && (!items.get(w.target) || items.get(w.target).done)) w.target = null;    // someone else got it
+      if (!w.target) {
+        const taken = new Set(sims.map(x => x.target).filter(Boolean));
+        let best = null, bd = Infinity;
+        for (const [id, d] of items) {
+          if (d.type !== 'request' || d.done || taken.has(id) || String(d.text).includes('outside the area')) continue;
+          const m = metresBetween(w, d);
+          if (m < bd) { bd = m; best = id; }
+        }
+        w.target = best;
+      }
+      if (w.target && dt > 0) {
+        const t = items.get(w.target), dist = metresBetween(w, t);
+        if (dist <= 4) { w.pause = 4 + Math.random() * 6; }
+        else {
+          const want = Math.atan2((t.lng - w.lng) * Math.cos(w.lat * Math.PI / 180), t.lat - w.lat);   // 0 = north, straight to the tree
+          const turn = Math.max(-1.6 * dt, Math.min(1.6 * dt, angDiff(w.heading, want)));              // can turn about 90° a second
+          w.heading += turn + (Math.random() - 0.5) * 0.12 * Math.sqrt(dt);                             // small wobble, like a real gait
+          w.speed = Math.max(1.1, Math.min(1.7, w.speed + (Math.random() - 0.5) * 0.08));
+          const step = Math.min(w.speed * dt, dist);
+          w.lat += step * Math.cos(w.heading) / M_PER_DEG;
+          w.lng += step * Math.sin(w.heading) / (M_PER_DEG * Math.cos(w.lat * Math.PI / 180));
+        }
+      }
+    }
+    people.set(w.id, { type: 'presence', cid: w.id, lat: w.lat, lng: w.lng, acc: 6, ts: Date.now(), who: w.name });
+  }
+  drawPeople();
+}
 
 /* ---------------- shared password (Firebase Authentication) ---------------- */
 // The password is checked by Firebase, which stores only a salted hash; the Firestore rules then let in only this one
