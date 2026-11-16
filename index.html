@@ -27,7 +27,10 @@
   .leaflet-popup-content-wrapper{border-radius:var(--pop-rad);box-shadow:var(--pop-shadow)}
   .leaflet-popup-content{margin:14px 16px}
   .leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
-  .stats{display:flex;flex-wrap:wrap;gap:2px 16px;margin-top:5px;font-size:13px}
+  .stats{display:flex;flex-wrap:wrap;align-items:center;gap:2px 16px;margin-top:5px;font-size:13px}
+  .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  .tools .fbtn{padding:4px 11px}
+  .tools #btn-theme{margin-left:auto}
   .chip{display:flex;align-items:center;gap:6px}
   .sw{width:14px;height:14px;border:2px solid #fff;display:inline-block;flex:none}
   .sw.req{border-radius:50%;background:#e8590c}
@@ -188,6 +191,7 @@
   <div class="stats">
     <span class="chip"><span class="hico req" id="ico-req"></span><span id="stat-req">…</span></span>
     <span class="chip"><span class="hico pile" id="ico-pile"></span><span id="stat-pile">…</span></span>
+    <span id="status"></span>
   </div>
   <div class="filters">
     <span>Show:</span>
@@ -195,12 +199,13 @@
     <label><input type="checkbox" id="show-piles" checked> Piles</label>
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
     <label><input type="checkbox" id="show-estates" checked> Outlines</label>
+  </div>
+  <div class="tools">
     <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
-    <button class="fbtn" id="btn-team" aria-expanded="false" aria-label="Team locations">👥</button>
-    <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme">🎨</button>
-    <button class="fbtn" id="btn-lock" aria-label="Password and sign out" hidden>🔒</button>
-    <span id="status"></span>
+    <button class="fbtn" id="btn-team" aria-expanded="false">👥 Team</button>
+    <button class="fbtn" id="btn-lock" hidden>🔒 Account</button>
+    <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme" title="Theme">🎨</button>
   </div>
 </header>
 
@@ -1199,6 +1204,16 @@ const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return 
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const CID = (() => { let c = lsGet(CID_KEY); if (!c) { c = Math.random().toString(36).slice(2, 10); lsSet(CID_KEY, c); } return c; })();
 const MY_PRES = 'presence-' + CID;
+// People who haven't typed a name get a random superhero name (kept on their device), so the map never shows "Someone".
+const HERO_NAMES = ['Batman', 'Superman', 'Wonder Woman', 'Spider-Man', 'Iron Man', 'Thor', 'Hulk', 'Black Widow', 'Captain America', 'Black Panther',
+  'Wolverine', 'Storm', 'Aquaman', 'The Flash', 'Green Lantern', 'Supergirl', 'Ant-Man', 'Hawkeye', 'Daredevil', 'Catwoman', 'Batgirl', 'Doctor Strange',
+  'Captain Marvel', 'Scarlet Witch', 'Nightcrawler', 'Cyclops', 'Rogue', 'Starfire', 'Cyborg', 'Zatanna'];
+const randomHero = (avoid = []) => {
+  const free = HERO_NAMES.filter(n => !avoid.includes(n));
+  return (free.length ? free : HERO_NAMES)[Math.floor(Math.random() * (free.length || HERO_NAMES.length))];
+};
+const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = randomHero(); lsSet('tree-collection-hero', h); } return h; };
+const displayName = () => getName() || myHero();
 const team = { show: lsGet(SHOW_KEY) === '1', share: false, timer: 0, msg: '' };
 const peopleLayer = L.layerGroup().addTo(map);
 
@@ -1230,7 +1245,7 @@ function sharePoll() {
     if (!team.share) return;
     rememberFix(pos);
     store.set(MY_PRES, { type: 'presence', cid: CID, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0),
-      ts: pos.timestamp || Date.now(), who: getName() });
+      ts: pos.timestamp || Date.now(), who: displayName() });
     team.msg = ''; renderTeamPanel(true);
   }, e => {
     if (e && e.code === 1) stopSharing('Location access was refused. Allow it for this site in the browser settings to share.');
@@ -1251,7 +1266,7 @@ function stopSharing(msg) {
 }
 function updateTeamButton() {
   const b = $('btn-team');
-  b.textContent = team.share ? '👥 Sharing' : '👥';
+  b.textContent = team.share ? '👥 Sharing' : '👥 Team';
   b.classList.toggle('on', team.share);
 }
 function renderTeamPanel(keepFocus) {
@@ -1268,7 +1283,7 @@ function renderTeamPanel(keepFocus) {
     el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
-    el('div', { className: 'small', textContent: team.msg || 'Off by default. Only people with the password can see it. Untick “Share” to disappear straight away. Positions older than 2 minutes turn grey and vanish after 10.' }));
+    el('div', { className: 'small', textContent: team.msg || `Without a name, others see you as “${myHero()}”. Off by default. Only people with the password can see it. Untick “Share” to disappear straight away. Positions older than 2 minutes turn grey and vanish after 10.` }));
 }
 $('btn-team').onclick = () => {
   const p = $('teampanel');
@@ -1958,7 +1973,6 @@ if (window.__watchdogShown) { $('banner').hidden = true; window.__watchdogShown 
 // Simulated volunteers: each walks in a straight line at a human pace (about 1.4 m/s, with a wobbly heading and slowly varying
 // speed) to the nearest uncollected address that no other walker is heading for, stops for a few seconds, marks it collected,
 // then picks the next. They show up as team markers (and in the activity log), exactly like real people.
-const WALKER_NAMES = ['Aoife', 'Cian', 'Niamh', 'Seán', 'Orla', 'Dara', 'Róisín', 'Eoin', 'Saoirse', 'Fionn'];
 const sims = [];
 let simTimer = 0, simSpeed = 1, simSeq = 0;
 const M_PER_DEG = 111320;
@@ -1972,7 +1986,7 @@ const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d 
 function addWalker() {
   if (!demoMode) return;
   const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
-  const w = { id: 'sim-' + (++simSeq), name: WALKER_NAMES[(simSeq - 1) % WALKER_NAMES.length], target: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), target: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
     lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
   sims.push(w);
   team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
