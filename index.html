@@ -122,6 +122,10 @@
   #teampanel .av-own input{flex:none;width:64px;font-size:20px;text-align:center}
   .who-lbl{position:absolute;left:50%;top:32px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#1b1b1b;font:600 11px/1.3 system-ui;padding:1px 7px;border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none}
   .who-lbl.stale{color:#777;font-weight:500}
+  .who-wrap.me::before{content:"";position:absolute;inset:-5px;border-radius:50%;background:rgba(25,113,194,.28);border:2px solid rgba(25,113,194,.9)}
+  #teampanel .mine{display:flex;align-items:center;gap:10px;margin:8px 0 4px;padding:8px;border-radius:10px;background:var(--soft)}
+  #teampanel .mine .ic{font-size:28px;line-height:1}
+  #teampanel .mine .nm{font:600 12px system-ui;background:#fff;color:#1b1b1b;border-radius:9px;padding:1px 8px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
   #lockpanel button{display:block;width:100%;margin:6px 0 0;padding:9px 12px;font-size:14px}
   #lock{z-index:1600;align-items:center;background:var(--bar)}
   #lock .card{width:min(360px,100%)}
@@ -1147,7 +1151,7 @@ $('locate').onclick = () => {
   if (!navigator.geolocation) return alert('Location is not available on this device.');
   navigator.geolocation.getCurrentPosition(p => {
     const ll = [p.coords.latitude, p.coords.longitude];
-    rememberFix(p);
+    rememberFix(p); drawPeople();
     if (!me) me = L.circleMarker(ll, { radius: 8, color: '#fff', weight: 3, fillColor: '#1971c2', fillOpacity: 1, interactive: false }).addTo(map);
     else me.setLatLng(ll);
     map.setView(ll, Math.max(map.getZoom(), 17));
@@ -1227,7 +1231,7 @@ const randomHero = (avoid = []) => {
 const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = randomHero(); lsSet('tree-collection-hero', h); } return h; };
 const displayName = () => getName() || myHero();
 // What other people see on the map for you: a gender-neutral person by default, or a van, or something sillier, or any emoji you type.
-const AVATARS = [['🧑', 'Person'], ['🚐', 'Van'], ['🧑‍🎄', 'Mx Claus'], ['🦌', 'Reindeer'], ['🛷', 'Sleigh'], ['🐌', 'Snail (slow but steady)'],
+const AVATARS = [['🚶', 'Walking'], ['🚐', 'Van'], ['🧑‍🎄', 'Mx Claus'], ['🦌', 'Reindeer'], ['🛷', 'Sleigh'], ['🐌', 'Snail (slow but steady)'],
   ['🦖', 'T-rex'], ['🦄', 'Unicorn'], ['🐧', 'Penguin'], ['🚜', 'Tractor'], ['🦆', 'Duck'], ['🧙', 'Wizard']];
 const AVATAR_KEY = 'tree-collection-avatar';
 const firstGlyph = v => {            // keep just one emoji / symbol (a whole grapheme, so flags and ZWJ sequences stay intact)
@@ -1236,7 +1240,7 @@ const firstGlyph = v => {            // keep just one emoji / symbol (a whole gr
   if (typeof Intl !== 'undefined' && Intl.Segmenter) return [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(v)][0].segment;
   return [...v].slice(0, 4).join('');
 };
-const myAvatar = () => firstGlyph(lsGet(AVATAR_KEY)) || '🧑';
+const myAvatar = () => firstGlyph(lsGet(AVATAR_KEY)) || '🚶';
 const randomAvatar = () => AVATARS[Math.floor(Math.random() * AVATARS.length)][0];
 const team = { show: lsGet(SHOW_KEY) !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
 const peopleLayer = L.layerGroup().addTo(map);
@@ -1246,21 +1250,32 @@ const saveHiddenPeople = () => lsSet('tree-collection-hidden-people', JSON.strin
 
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function ageText(ms) { const s = Math.round(ms / 1000); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; }
+const personHtml = (icon, name, stale, me) =>
+  `<div class="who-wrap${me ? ' me' : ''}"><div class="who-ico${stale ? ' stale' : ''}">${esc(icon)}</div><div class="who-lbl${stale ? ' stale' : ''}">${esc(name || 'Someone')}</div></div>`;
 function drawPeople() {
   peopleLayer.clearLayers();
-  if (!team.show) return;
   const now = Date.now();
-  for (const [id, p] of people) {
-    if (p.cid === CID || hiddenPeople.has(p.cid)) continue;   // my own position is the blue dot from the ◎ button
-    const age = now - p.ts;
-    if (!(age <= PRES_GONE_MS)) continue;              // more than 10 minutes old: gone
-    const stale = age > PRES_FRESH_MS;                 // more than 2 minutes old: grey
-    const name = (p.who || '').trim();
-    const icon = firstGlyph(p.icon) || '🧑';
-    L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: '', html: `<div class="who-wrap"><div class="who-ico${stale ? ' stale' : ''}">${esc(icon)}</div><div class="who-lbl${stale ? ' stale' : ''}">${esc(name || 'Someone')}</div></div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
-      title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
+  // me, drawn exactly as the others see me (same icon, name and greying), so what I see is what they get
+  const fix = lastFix, age0 = fix ? now - fix.ts : Infinity;
+  if (fix && age0 <= PRES_GONE_MS && (team.share || demoMode)) {
+    const stale = age0 > PRES_FRESH_MS;
+    L.marker(fix.ll, {
+      icon: L.divIcon({ className: '', html: personHtml(myAvatar(), displayName(), stale, true), iconSize: [30, 30], iconAnchor: [15, 15] }),
+      title: `You, as others see you${stale ? ' (last known position)' : ''}`, zIndexOffset: 300, interactive: false
     }).addTo(peopleLayer);
+  }
+  if (team.show) {
+    for (const [id, p] of people) {
+      if (p.cid === CID || hiddenPeople.has(p.cid)) continue;
+      const age = now - p.ts;
+      if (!(age <= PRES_GONE_MS)) continue;              // more than 10 minutes old: gone
+      const stale = age > PRES_FRESH_MS;                 // more than 2 minutes old: grey
+      const name = (p.who || '').trim();
+      L.marker([p.lat, p.lng], {
+        icon: L.divIcon({ className: '', html: personHtml(firstGlyph(p.icon) || '🚶', name, stale, false), iconSize: [30, 30], iconAnchor: [15, 15] }),
+        title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
+      }).addTo(peopleLayer);
+    }
   }
   renderTeamPanel(true);
 }
@@ -1275,7 +1290,7 @@ function sharePoll() {
     askNameOnce();
     store.set(MY_PRES, { type: 'presence', cid: CID, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0),
       ts: pos.timestamp || Date.now(), who: displayName(), icon: myAvatar() });
-    team.msg = ''; renderTeamPanel(true);
+    team.msg = ''; drawPeople();
   }, e => {
     if (e && e.code === 1) stopSharing('Location access was refused. Allow it for this site in the browser settings to share.');
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
@@ -1308,7 +1323,7 @@ function renderTeamPanel(keepFocus) {
   const now = Date.now();
   const live = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).sort((a, b) => (a.who || '').localeCompare(b.who || ''));
   const others = live.length;
-  const setAvatar = v => { lsSet(AVATAR_KEY, v); if (team.share) sharePoll(); renderTeamPanel(); };
+  const setAvatar = v => { lsSet(AVATAR_KEY, v); if (team.share) sharePoll(); drawPeople(); renderTeamPanel(); };
   const cur = myAvatar();
   const avRow = el('div', { className: 'av-row' }, ...AVATARS.map(([g, label]) =>
     el('button', { type: 'button', textContent: g, title: label, 'aria-label': label, className: g === cur ? 'sel' : '', onclick: () => setAvatar(g) })));
@@ -1326,6 +1341,8 @@ function renderTeamPanel(keepFocus) {
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
     el('div', { className: 'small', textContent: 'Your icon on the map' }), avRow, ownRow,
+    el('div', { className: 'mine' }, el('span', { className: 'ic', textContent: cur }), el('span', { className: 'nm', textContent: displayName() }),
+      el('span', { className: 'small', style: 'margin:0', textContent: team.share ? 'This is how others see you, and you see yourself on the map.' : (demoMode ? 'This is how others would see you (tap ◎ to see yourself on the map).' : 'Not shared right now: nobody can see you.') })),
     ...(team.show && personRows.length ? [el('div', { className: 'small', textContent: 'Untick a person to hide just them:' }), ...personRows] : []),
     el('div', { className: 'small', textContent: team.msg || 'Only people with the password can see it. Untick “Share” to disappear straight away.' }));
 }
@@ -1340,6 +1357,7 @@ $('btn-team').onclick = () => {
 function setMyName(v) {
   lsSet(NAME_KEY, String(v).trim());
   if (team.share) sharePoll();
+  drawPeople();
 }
 // Once, right after the browser has given us location access, offer to add a name.
 function askNameOnce() {
@@ -2038,7 +2056,7 @@ const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d 
 function addWalker() {
   if (!demoMode) return;
   const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
-  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), icon: Math.random() < 0.5 ? '🧑' : randomAvatar(), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), icon: Math.random() < 0.5 ? '🚶' : randomAvatar(), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
     lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
   sims.push(w);
   team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
