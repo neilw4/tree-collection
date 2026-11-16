@@ -112,6 +112,9 @@
   .fbtn.on{background:#fff;color:#14171a;border-color:#fff}
   .who{width:30px;height:30px;border-radius:50%;background:#1971c2;color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:700 13px system-ui;box-sizing:border-box}
   .who.stale{background:#868e96;opacity:.8}
+  .who-wrap{position:relative;width:30px;height:30px}
+  .who-lbl{position:absolute;left:50%;top:32px;transform:translateX(-50%);white-space:nowrap;background:rgba(255,255,255,.94);color:#1b1b1b;font:600 11px/1.3 system-ui;padding:1px 7px;border-radius:9px;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none}
+  .who-lbl.stale{color:#777;font-weight:500}
   #lockpanel button{display:block;width:100%;margin:6px 0 0;padding:9px 12px;font-size:14px}
   #lock{z-index:1600;align-items:center;background:var(--bar)}
   #lock .card{width:min(360px,100%)}
@@ -1222,6 +1225,7 @@ const peopleLayer = L.layerGroup().addTo(map);
 const hiddenPeople = new Set((() => { try { return JSON.parse(lsGet('tree-collection-hidden-people') || '[]'); } catch (e) { return []; } })());
 const saveHiddenPeople = () => lsSet('tree-collection-hidden-people', JSON.stringify([...hiddenPeople]));
 
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function ageText(ms) { const s = Math.round(ms / 1000); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; }
 function drawPeople() {
   peopleLayer.clearLayers();
@@ -1235,7 +1239,7 @@ function drawPeople() {
     const name = (p.who || '').trim();
     const initial = name ? [...name][0].toUpperCase() : '👤';
     L.marker([p.lat, p.lng], {
-      icon: L.divIcon({ className: '', html: `<div class="who${stale ? ' stale' : ''}">${initial}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
+      icon: L.divIcon({ className: '', html: `<div class="who-wrap"><div class="who${stale ? ' stale' : ''}">${esc(initial)}</div><div class="who-lbl${stale ? ' stale' : ''}">${esc(name || 'Someone')}</div></div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
       title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
     }).addTo(peopleLayer);
   }
