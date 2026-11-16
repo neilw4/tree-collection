@@ -1220,6 +1220,9 @@ const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = rand
 const displayName = () => getName() || myHero();
 const team = { show: lsGet(SHOW_KEY) !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
 const peopleLayer = L.layerGroup().addTo(map);
+// individual people hidden on this device (by their device id), remembered between visits
+const hiddenPeople = new Set((() => { try { return JSON.parse(lsGet('tree-collection-hidden-people') || '[]'); } catch (e) { return []; } })());
+const saveHiddenPeople = () => lsSet('tree-collection-hidden-people', JSON.stringify([...hiddenPeople]));
 
 function ageText(ms) { const s = Math.round(ms / 1000); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; }
 function drawPeople() {
@@ -1227,7 +1230,7 @@ function drawPeople() {
   if (!team.show) return;
   const now = Date.now();
   for (const [id, p] of people) {
-    if (p.cid === CID) continue;                       // my own position is the blue dot from the ◎ button
+    if (p.cid === CID || hiddenPeople.has(p.cid)) continue;   // my own position is the blue dot from the ◎ button
     const age = now - p.ts;
     if (!(age <= PRES_GONE_MS)) continue;              // more than 10 minutes old: gone
     const stale = age > PRES_FRESH_MS;                 // more than 2 minutes old: grey
@@ -1280,12 +1283,20 @@ function renderTeamPanel(keepFocus) {
   const share = el('input', { type: 'checkbox', checked: team.share, onchange: () => (share.checked ? startSharing() : stopSharing()) });
   const show = el('input', { type: 'checkbox', checked: team.show, onchange: () => { team.show = show.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); } });
   const name = el('input', { type: 'text', placeholder: myHero(), value: getName(), maxLength: 30, oninput: () => setMyName(name.value) });
-  const others = [...people.values()].filter(x => x.cid !== CID && Date.now() - x.ts <= PRES_GONE_MS).length;
+  const now = Date.now();
+  const live = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).sort((a, b) => (a.who || '').localeCompare(b.who || ''));
+  const others = live.length;
+  const personRows = live.map(x => {
+    const box = el('input', { type: 'checkbox', checked: !hiddenPeople.has(x.cid),
+      onchange: () => { if (box.checked) hiddenPeople.delete(x.cid); else hiddenPeople.add(x.cid); saveHiddenPeople(); drawPeople(); } });
+    return el('label', {}, box, el('span', { textContent: `${x.who || 'Someone'} · ${ageText(now - x.ts)}` }));
+  });
   p.replaceChildren(
     el('div', { className: 'eh', textContent: 'Location' }),
     el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
     el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
     el('label', {}, el('span', { textContent: 'Name' }), name),
+    ...(team.show && personRows.length ? [el('div', { className: 'small', textContent: 'Untick a person to hide just them:' }), ...personRows] : []),
     el('div', { className: 'small', textContent: team.msg || 'Only people with the password can see it. Untick “Share” to disappear straight away.' }));
 }
 $('btn-team').onclick = () => {
