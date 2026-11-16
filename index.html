@@ -229,7 +229,8 @@
     <label><input type="checkbox" id="show-piles" checked> Piles</label>
     <label><input type="checkbox" id="show-collected" checked> Collected</label>
     <label><input type="checkbox" id="show-estates" checked> Estate outlines</label>
-    <label><input type="checkbox" id="show-people" checked> <span id="show-people-lbl">See where others are</span></label>
+    <label><input type="checkbox" id="show-me" checked> Me</label>
+    <label><input type="checkbox" id="show-people" checked> <span id="show-people-lbl">Others</span></label>
     <div id="estlist"></div>
   </div>
   <div id="logpanel" hidden></div>
@@ -1243,7 +1244,7 @@ const firstGlyph = v => {            // keep just one emoji / symbol (a whole gr
 };
 const myAvatar = () => firstGlyph(lsGet(AVATAR_KEY)) || '🚶';
 const randomAvatar = () => AVATARS[Math.floor(Math.random() * AVATARS.length)][0];
-const team = { show: lsGet(SHOW_KEY) !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
+const team = { show: lsGet(SHOW_KEY) !== '0', me: lsGet('tree-collection-show-me') !== '0', share: false, timer: 0, msg: '' };   // both on unless switched off
 const peopleLayer = L.layerGroup().addTo(map);
 // individual people hidden on this device (by their device id), remembered between visits
 const hiddenPeople = new Set((() => { try { return JSON.parse(lsGet('tree-collection-hidden-people') || '[]'); } catch (e) { return []; } })());
@@ -1258,7 +1259,7 @@ function drawPeople() {
   const now = Date.now();
   // me, drawn exactly as the others see me (same icon, name and greying), so what I see is what they get
   const fix = lastFix, age0 = fix ? now - fix.ts : Infinity;
-  if (fix && age0 <= PRES_GONE_MS && (team.share || demoMode)) {
+  if (team.me && fix && age0 <= PRES_GONE_MS && (team.share || demoMode)) {
     const stale = age0 > PRES_FRESH_MS;
     L.marker(fix.ll, {
       icon: L.divIcon({ className: '', html: personHtml(myAvatar(), displayName(), stale, true), iconSize: [30, 30], iconAnchor: [15, 15] }),
@@ -1279,7 +1280,7 @@ function drawPeople() {
     }
   }
   const n = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).length;
-  $('show-people-lbl').textContent = 'See where others are' + (team.show && n ? ` (${n} sharing)` : '');
+  $('show-people-lbl').textContent = 'Others' + (team.show && n ? ` (${n} sharing)` : '');
   renderTeamPanel(true);
 }
 setInterval(drawPeople, 15000);   // let markers age (grey, then disappear) even when nothing new arrives
@@ -1367,9 +1368,10 @@ function askNameOnce() {
   const v = prompt(`Location sharing is on. Add your name so the team can see who you are? (Optional. Leave it blank to appear as “${myHero()}”. You can change it any time in 👥 Location.)`, '');
   if (v && v.trim()) { setMyName(v); renderTeamPanel(); }
 }
+$('show-me').onchange = e => { team.me = e.target.checked; lsSet('tree-collection-show-me', team.me ? '1' : '0'); drawPeople(); };
 $('show-people').onchange = e => { team.show = e.target.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); };
 function initTeam() {
-  $('show-people').checked = team.show;            // called once the store is connected
+  $('show-people').checked = team.show; $('show-me').checked = team.me;            // called once the store is connected
   updateTeamButton();
   if (lsGet(SHARE_KEY) !== '0' && !demoMode) startSharing();
   window.addEventListener('pagehide', () => { if (team.share && store && !demoMode) store.remove(MY_PRES); });
