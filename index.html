@@ -97,8 +97,16 @@
   /* Upload from a spreadsheet */
   #bulk{margin-top:10px;font-size:13px;color:var(--muted)}
   #bulk button{background:none;border:0;padding:4px 0;color:var(--link);text-decoration:underline;font-size:14px;cursor:pointer}
-  #estpanel,#logpanel,#themepanel,#lockpanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:var(--surface);color:var(--text);border-radius:var(--pop-rad);box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
-  #estpanel[hidden],#logpanel[hidden],#themepanel[hidden],#lockpanel[hidden]{display:none}
+  #estpanel,#logpanel,#themepanel,#lockpanel,#teampanel{position:absolute;top:8px;left:8px;z-index:950;width:min(300px,calc(100% - 16px));max-height:60%;overflow:auto;background:var(--surface);color:var(--text);border-radius:var(--pop-rad);box-shadow:0 3px 14px rgba(0,0,0,.4);padding:8px 10px}
+  #estpanel[hidden],#logpanel[hidden],#themepanel[hidden],#lockpanel[hidden],#teampanel[hidden]{display:none}
+  #teampanel label{display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+  #teampanel input[type=checkbox]{width:18px;height:18px;margin:0}
+  #teampanel input[type=text]{flex:1;padding:6px 8px;font-size:14px;border:1px solid var(--border);border-radius:8px}
+  #teampanel .eh{font-weight:600;margin-bottom:2px}
+  #teampanel .small{margin:4px 0 0}
+  .fbtn.on{background:#fff;color:#14171a;border-color:#fff}
+  .who{width:30px;height:30px;border-radius:50%;background:#1971c2;color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;font:700 13px system-ui;box-sizing:border-box}
+  .who.stale{background:#868e96;opacity:.8}
   #lockpanel button{display:block;width:100%;margin:6px 0 0;padding:9px 12px;font-size:14px}
   #lock{z-index:1600;align-items:center;background:var(--bar)}
   #lock .card{width:min(360px,100%)}
@@ -189,6 +197,7 @@
     <label><input type="checkbox" id="show-estates" checked> Outlines</label>
     <button class="fbtn" id="btn-estates" aria-expanded="false">Estates ▾</button>
     <button class="fbtn" id="btn-log" aria-expanded="false">📜 Log</button>
+    <button class="fbtn" id="btn-team" aria-expanded="false" aria-label="Team locations">👥</button>
     <button class="fbtn" id="btn-theme" aria-expanded="false" aria-label="Theme">🎨</button>
     <button class="fbtn" id="btn-lock" aria-label="Password and sign out" hidden>🔒</button>
     <span id="status"></span>
@@ -203,6 +212,7 @@
   <div id="estpanel" hidden></div>
   <div id="logpanel" hidden></div>
   <div id="themepanel" hidden></div>
+  <div id="teampanel" hidden></div>
   <div id="lockpanel" hidden><div class="eh" style="font-weight:600">Shared password</div>
     <button class="sec" id="lk-change">Change password…</button><button class="sec" id="lk-out">Sign out of this device</button></div>
 </div>
@@ -404,6 +414,7 @@ const fmtTime = ts => ts ? new Date(ts).toLocaleTimeString('en-IE', { hour: '2-d
 const items = new Map();    // id -> data
 const markers = new Map();  // id -> Leaflet marker
 const estates = new Map();  // id -> {type:'estate', name, time}
+const people = new Map();   // id -> {type:'presence', cid, lat, lng, acc, ts, who}   (people sharing their location)
 const logs = new Map();     // id -> {type:'log', ts, who, action, targetId, label, snapshot?, undone?}
 let fbAuth = null;   // {api, auth} when Firebase is in use
 let store = null, demoMode = false, pending = false, fitted = false, comp = null, me = null;
@@ -712,9 +723,10 @@ $('e-delete').onclick = () => {
 };
 
 function applyChanges(changes) {
-  let estatesChanged = false, logChanged = false;
+  let estatesChanged = false, logChanged = false, peopleChanged = false;
   for (const c of changes) {
     if (c.type === 'removed') {
+      if (people.delete(c.id)) { peopleChanged = true; continue; }
       if (logs.delete(c.id)) { logChanged = true; continue; }
       if (estates.delete(c.id)) { estatesChanged = true; continue; }
       items.delete(c.id);
@@ -723,6 +735,7 @@ function applyChanges(changes) {
       continue;
     }
     const d = c.data;
+    if (d.type === 'presence') { people.set(c.id, d); peopleChanged = true; continue; }
     if (d.type === 'log') { logs.set(c.id, d); logChanged = true; continue; }
     if (d.type === 'estate') { estates.set(c.id, d); estatesChanged = true; continue; }
     items.set(c.id, d);
@@ -743,6 +756,7 @@ function applyChanges(changes) {
   refreshEstateList();
   scheduleEstates();
   if (logChanged) renderLog();
+  if (peopleChanged) drawPeople();
 }
 
 function updateStats() {
@@ -1176,6 +1190,99 @@ $('btn-theme').onclick = () => {
   renderThemePanel();
 };
 
+/* ---------------- team locations (opt-in) ---------------- */
+// Sharing is OFF until someone switches it on. Each sharing phone writes one small document (its position, a time and an
+// optional name) and deletes it when sharing is switched off. Positions older than 2 minutes are drawn grey, older than 10 minutes not at all.
+const PRES_FRESH_MS = 2 * 60000, PRES_GONE_MS = 10 * 60000, PRES_EVERY_MS = 30000;
+const SHOW_KEY = 'tree-collection-show-team', SHARE_KEY = 'tree-collection-share', CID_KEY = 'tree-collection-cid';
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const CID = (() => { let c = lsGet(CID_KEY); if (!c) { c = Math.random().toString(36).slice(2, 10); lsSet(CID_KEY, c); } return c; })();
+const MY_PRES = 'presence-' + CID;
+const team = { show: lsGet(SHOW_KEY) === '1', share: false, timer: 0, msg: '' };
+const peopleLayer = L.layerGroup().addTo(map);
+
+function ageText(ms) { const s = Math.round(ms / 1000); return s < 60 ? `${s} s ago` : `${Math.round(s / 60)} min ago`; }
+function drawPeople() {
+  peopleLayer.clearLayers();
+  if (!team.show) return;
+  const now = Date.now();
+  for (const [id, p] of people) {
+    if (p.cid === CID) continue;                       // my own position is the blue dot from the ◎ button
+    const age = now - p.ts;
+    if (!(age <= PRES_GONE_MS)) continue;              // more than 10 minutes old: gone
+    const stale = age > PRES_FRESH_MS;                 // more than 2 minutes old: grey
+    const name = (p.who || '').trim();
+    const initial = name ? [...name][0].toUpperCase() : '👤';
+    L.marker([p.lat, p.lng], {
+      icon: L.divIcon({ className: '', html: `<div class="who${stale ? ' stale' : ''}">${initial}</div>`, iconSize: [30, 30], iconAnchor: [15, 15] }),
+      title: `${name || 'Someone'} · ${ageText(age)}${stale ? ' (last known)' : ''}`, zIndexOffset: -200
+    }).addTo(peopleLayer);
+  }
+  renderTeamPanel(true);
+}
+setInterval(drawPeople, 15000);   // let markers age (grey, then disappear) even when nothing new arrives
+
+function sharePoll() {
+  if (!team.share || !store || demoMode) return;
+  if (!navigator.geolocation) { stopSharing('Location is not available on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    if (!team.share) return;
+    rememberFix(pos);
+    store.set(MY_PRES, { type: 'presence', cid: CID, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: Math.round(pos.coords.accuracy || 0),
+      ts: pos.timestamp || Date.now(), who: getName() });
+    team.msg = ''; renderTeamPanel(true);
+  }, e => {
+    if (e && e.code === 1) stopSharing('Location access was refused. Allow it for this site in the browser settings to share.');
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
+  // tidy up positions left behind by phones that closed the page without switching sharing off
+  for (const [id, p] of people) if (p.cid !== CID && Date.now() - (p.ts || 0) > 60 * 60000) store.remove(id);
+}
+function startSharing() {
+  if (demoMode) { team.msg = 'Sharing needs the shared database. In demo mode nothing leaves this device.'; renderTeamPanel(); return; }
+  team.share = true; lsSet(SHARE_KEY, '1');
+  clearInterval(team.timer); team.timer = setInterval(sharePoll, PRES_EVERY_MS);
+  sharePoll(); updateTeamButton(); renderTeamPanel();
+}
+function stopSharing(msg) {
+  team.share = false; lsSet(SHARE_KEY, '0'); clearInterval(team.timer);
+  if (store && !demoMode) store.remove(MY_PRES);           // disappears from everyone's map straight away
+  team.msg = msg || ''; updateTeamButton(); renderTeamPanel();
+}
+function updateTeamButton() {
+  const b = $('btn-team');
+  b.textContent = team.share ? '👥 Sharing' : '👥';
+  b.classList.toggle('on', team.share);
+}
+function renderTeamPanel(keepFocus) {
+  const p = $('teampanel');
+  if (p.hidden) return;
+  if (keepFocus && p.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // don't disturb typing
+  const share = el('input', { type: 'checkbox', checked: team.share, onchange: () => (share.checked ? startSharing() : stopSharing()) });
+  const show = el('input', { type: 'checkbox', checked: team.show, onchange: () => { team.show = show.checked; lsSet(SHOW_KEY, team.show ? '1' : '0'); drawPeople(); } });
+  const name = el('input', { type: 'text', placeholder: 'Your name (optional)', value: getName(), maxLength: 30,
+    oninput: () => { lsSet(NAME_KEY, name.value.trim()); if (team.share) sharePoll(); } });
+  const others = [...people.values()].filter(x => x.cid !== CID && Date.now() - x.ts <= PRES_GONE_MS).length;
+  p.replaceChildren(
+    el('div', { className: 'eh', textContent: 'Team locations' }),
+    el('label', {}, show, el('span', { textContent: `See where others are${team.show ? ` (${others} sharing)` : ''}` })),
+    el('label', {}, share, el('span', { textContent: 'Share my location with the team' })),
+    el('label', {}, el('span', { textContent: 'Name' }), name),
+    el('div', { className: 'small', textContent: team.msg || 'Off by default. Only people with the password can see it. Untick “Share” to disappear straight away. Positions older than 2 minutes turn grey and vanish after 10.' }));
+}
+$('btn-team').onclick = () => {
+  const p = $('teampanel');
+  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; closeLog(); }
+  p.hidden = !p.hidden;
+  $('btn-team').setAttribute('aria-expanded', String(!p.hidden));
+  renderTeamPanel();
+};
+function initTeam() {            // called once the store is connected
+  updateTeamButton();
+  if (lsGet(SHARE_KEY) === '1' && !demoMode) startSharing();
+  window.addEventListener('pagehide', () => { if (team.share && store && !demoMode) store.remove(MY_PRES); });
+}
+
 /* ---------------- activity log ---------------- */
 // Entries are documents in the same collection ({type:'log'}), so everyone sees the same history.
 const NAME_KEY = 'tree-collection-name';
@@ -1235,10 +1342,10 @@ function renderLog() {
   });
   p.replaceChildren(head, ...(rows.length ? rows : [el('div', { className: 'small', textContent: 'Nothing yet. Adds, collections, pickups, edits and deletes show up here, with an Undo button.' })]));
 }
-function closeLog() { $('lockpanel').hidden = true; $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
+function closeLog() { $('lockpanel').hidden = true; $('teampanel').hidden = true; $('logpanel').hidden = true; $('btn-log').setAttribute('aria-expanded', 'false'); }
 $('btn-log').onclick = () => {
   const p = $('logpanel');
-  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; $('lockpanel').hidden = true; renderEstatePanel(); }
+  if (p.hidden) { $('estpanel').hidden = true; $('themepanel').hidden = true; $('lockpanel').hidden = true; $('teampanel').hidden = true; renderEstatePanel(); }
   p.hidden = !p.hidden;
   $('btn-log').setAttribute('aria-expanded', String(!p.hidden));
   renderLog();
@@ -1931,6 +2038,7 @@ const isSet = v => v && !String(v).startsWith('PASTE');
     }
   });
   updateStats();
+  initTeam();
 })();
 </script>
 </body>
