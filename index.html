@@ -1222,16 +1222,16 @@ const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return 
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
 const CID = (() => { let c = lsGet(CID_KEY); if (!c) { c = Math.random().toString(36).slice(2, 10); lsSet(CID_KEY, c); } return c; })();
 const MY_PRES = 'presence-' + CID;
-// People who haven't typed a name get a random superhero name (kept on their device), so the map never shows "Someone".
-const HERO_NAMES = ['Batman', 'Superman', 'Wonder Woman', 'Spider-Man', 'Iron Man', 'Thor', 'Hulk', 'Black Widow', 'Captain America', 'Black Panther',
-  'Wolverine', 'Storm', 'Aquaman', 'The Flash', 'Green Lantern', 'Supergirl', 'Ant-Man', 'Hawkeye', 'Daredevil', 'Catwoman', 'Batgirl', 'Doctor Strange',
-  'Captain Marvel', 'Scarlet Witch', 'Nightcrawler', 'Cyclops', 'Rogue', 'Starfire', 'Cyborg', 'Zatanna'];
-const randomHero = (avoid = []) => {
-  const free = HERO_NAMES.filter(n => !avoid.includes(n));
-  return (free.length ? free : HERO_NAMES)[Math.floor(Math.random() * (free.length || HERO_NAMES.length))];
+// People who haven't typed a name get a random supervillain name (kept on their device), so the map never shows "Someone".
+const VILLAIN_NAMES = ['The Joker', 'Lex Luthor', 'Magneto', 'Loki', 'Thanos', 'Doctor Doom', 'Green Goblin', 'Harley Quinn', 'Venom', 'Mystique',
+  'Ultron', 'Sinestro', 'Bane', 'The Riddler', 'Two-Face', 'Poison Ivy', 'Scarecrow', 'Mr. Freeze', 'Deathstroke', 'Darkseid', 'Red Skull', 'Kingpin',
+  'Sabretooth', 'Doctor Octopus', 'Sandman', 'Mysterio', 'Black Adam', 'Brainiac', 'Cheetah', 'Killer Croc'];
+const randomVillain = (avoid = []) => {
+  const free = VILLAIN_NAMES.filter(n => !avoid.includes(n));
+  return (free.length ? free : VILLAIN_NAMES)[Math.floor(Math.random() * (free.length || VILLAIN_NAMES.length))];
 };
-const myHero = () => { let h = lsGet('tree-collection-hero'); if (!h) { h = randomHero(); lsSet('tree-collection-hero', h); } return h; };
-const displayName = () => getName() || myHero();
+const myVillain = () => { let h = lsGet('tree-collection-villain'); if (!h) { h = randomVillain(); lsSet('tree-collection-villain', h); } return h; };
+const displayName = () => getName() || myVillain();
 // What other people see on the map for you: a gender-neutral person by default, or a van, or something sillier, or any emoji you type.
 const AVATARS = [['🚶', 'Walking'], ['🚐', 'Van'], ['🧑‍🎄', 'Mx Claus'], ['🦌', 'Reindeer'], ['🛷', 'Sleigh'], ['🐌', 'Snail (slow but steady)'],
   ['🦖', 'T-rex'], ['🦄', 'Unicorn'], ['🐧', 'Penguin'], ['🚜', 'Tractor'], ['🦆', 'Duck'], ['🧙', 'Wizard']];
@@ -1325,7 +1325,7 @@ function renderTeamPanel(keepFocus) {
   if (p.hidden) return;
   if (keepFocus && p.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;   // don't disturb typing
   const share = el('input', { type: 'checkbox', checked: team.share, onchange: () => (share.checked ? startSharing() : stopSharing()) });
-  const name = el('input', { type: 'text', placeholder: myHero(), value: getName(), maxLength: 30, oninput: () => setMyName(name.value) });
+  const name = el('input', { type: 'text', placeholder: myVillain(), value: getName(), maxLength: 30, oninput: () => setMyName(name.value) });
   const now = Date.now();
   const live = [...people.values()].filter(x => x.cid !== CID && now - x.ts <= PRES_GONE_MS).sort((a, b) => (a.who || '').localeCompare(b.who || ''));
   const others = live.length;
@@ -1358,7 +1358,7 @@ $('btn-team').onclick = () => {
   $('btn-team').setAttribute('aria-expanded', String(!p.hidden));
   renderTeamPanel();
 };
-// Name: set in the Location panel. Empty = others see the random superhero name shown (grey) as the placeholder.
+// Name: set in the Location panel. Empty = others see the random supervillain name shown (grey) as the placeholder.
 function setMyName(v) {
   lsSet(NAME_KEY, String(v).trim());
   if (team.share) sharePoll();
@@ -1368,7 +1368,7 @@ function setMyName(v) {
 function askNameOnce() {
   if (lsGet('tree-collection-name-asked') || getName()) return;
   lsSet('tree-collection-name-asked', '1');
-  const v = prompt(`Location sharing is on. Add your name so the team can see who you are? (Optional. Leave it blank to appear as “${myHero()}”. You can change it any time in 👥 Location.)`, '');
+  const v = prompt(`Location sharing is on. Add your name so the team can see who you are? (Optional. Leave it blank to appear as “${myVillain()}”. You can change it any time in 👥 Location.)`, '');
   if (v && v.trim()) { setMyName(v); renderTeamPanel(); }
 }
 $('show-me').onchange = e => { team.me = e.target.checked; lsSet('tree-collection-show-me', team.me ? '1' : '0'); drawPeople(); };
@@ -2064,7 +2064,7 @@ const angDiff = (a, b) => { let d = (b - a) % (2 * Math.PI); if (d > Math.PI) d 
 function addWalker() {
   if (!demoMode) return;
   const c = map.getCenter(), ang = Math.random() * 2 * Math.PI, d = 80 + Math.random() * 150;
-  const w = { id: 'sim-' + (++simSeq), name: randomHero(sims.map(x => x.name)), icon: Math.random() < 0.5 ? '🚶' : randomAvatar(), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
+  const w = { id: 'sim-' + (++simSeq), name: randomVillain(sims.map(x => x.name)), icon: Math.random() < 0.5 ? '🚶' : randomAvatar(), target: null, estate: null, pause: 0, speed: 1.3 + Math.random() * 0.2, heading: Math.random() * 2 * Math.PI,
     lat: c.lat + d * Math.cos(ang) / M_PER_DEG, lng: c.lng + d * Math.sin(ang) / (M_PER_DEG * Math.cos(c.lat * Math.PI / 180)) };
   sims.push(w);
   team.show = true; lsSet(SHOW_KEY, '1');           // so the walkers are visible straight away
